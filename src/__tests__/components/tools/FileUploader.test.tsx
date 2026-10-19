@@ -531,4 +531,25 @@ describe('FileUploader', () => {
       expect(mockOnFilesSelected).not.toHaveBeenCalled();
     });
   });
+
+  describe('Pending Dropped Files Handoff', () => {
+    it('automatically consumes pending dropped files on mount and passes them to onFilesSelected', async () => {
+      const { setPendingDroppedFiles, peekPendingDroppedFiles } = await import('@/lib/utils/file-tool-router');
+      const pngFile = createMockFile('photo.png', 1024, 'image/png');
+      setPendingDroppedFiles([pngFile], 'png-to-pdf');
+
+      render(
+        <FileUploader
+          accept={['image/png', '.png']}
+          onFilesSelected={mockOnFilesSelected}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockOnFilesSelected).toHaveBeenCalledWith([pngFile]);
+      });
+
+      expect(peekPendingDroppedFiles()).toBeNull();
+    });
+  });
 });

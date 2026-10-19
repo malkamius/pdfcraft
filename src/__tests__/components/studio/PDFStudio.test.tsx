@@ -4,11 +4,14 @@ import React from 'react';
 import { PDFStudio } from '@/components/studio/PDFStudio';
 import * as tauriBridge from '@/lib/tauri-bridge';
 import * as studioProcessors from '@/components/studio/studio-processors';
+import { clearPendingDroppedFiles, peekPendingDroppedFiles } from '@/lib/utils/file-tool-router';
+
+const mockPush = vi.fn();
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: mockPush,
     replace: vi.fn(),
     prefetch: vi.fn(),
   }),
@@ -47,6 +50,7 @@ const originalRevokeObjectURL = URL.revokeObjectURL;
 describe('PDFStudio Component', () => {
   beforeEach(() => {
     localStorage.clear();
+    clearPendingDroppedFiles();
     URL.createObjectURL = vi.fn(() => 'blob:mock-studio-url');
     URL.revokeObjectURL = vi.fn();
     vi.clearAllMocks();
@@ -54,6 +58,7 @@ describe('PDFStudio Component', () => {
 
   afterEach(() => {
     localStorage.clear();
+    clearPendingDroppedFiles();
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
     cleanup();
@@ -449,6 +454,58 @@ describe('PDFStudio Component', () => {
         'scan_searchable.pdf'
       );
     });
+  });
+
+  it('opens the proper tool window directly when a file supported by a single tool is dragged in', () => {
+    render(<PDFStudio locale="en" />);
+
+    const psdFile = new File(['dummy psd'], 'artwork.psd', {
+      type: 'image/vnd.adobe.photoshop',
+    });
+
+    const studioHeading = screen.getByText(/Import PDF to Launch Studio Workspace/i);
+    fireEvent.drop(studioHeading, {
+      dataTransfer: {
+        files: [psdFile],
+      },
+    });
+
+    expect(mockPush).toHaveBeenCalledWith('/en/tools/psd-to-pdf');
+    const pending = peekPendingDroppedFiles();
+    expect(pending).not.toBeNull();
+    expect(pending?.targetToolSlug).toBe('psd-to-pdf');
+    expect(pending?.files).toEqual([psdFile]);
+  });
+
+  it('opens the tool selection modal with valid tools when an image supported by multiple tools is dragged in', () => {
+    render(<PDFStudio locale="en" />);
+
+    const pngFile = new File(['dummy png'], 'screenshot.png', {
+      type: 'image/png',
+    });
+
+    const studioHeading = screen.getByText(/Import PDF to Launch Studio Workspace/i);
+    fireEvent.drop(studioHeading, {
+      dataTransfer: {
+        files: [pngFile],
+      },
+    });
+
+    // Modal should appear listing valid tools for .png
+    const modal = screen.getByTestId('tool-selection-modal');
+    expect(modal).toBeInTheDocument();
+    expect(screen.getByText('screenshot.png')).toBeInTheDocument();
+    expect(screen.getByTestId('select-tool-png-to-pdf')).toBeInTheDocument();
+    expect(screen.getByTestId('select-tool-image-to-pdf')).toBeInTheDocument();
+    expect(screen.getByTestId('select-tool-ocr-pdf')).toBeInTheDocument();
+
+    // Selecting a tool opens that tool window and queues the file
+    fireEvent.click(screen.getByTestId('select-tool-png-to-pdf'));
+
+    expect(mockPush).toHaveBeenCalledWith('/en/tools/png-to-pdf');
+    const pending = peekPendingDroppedFiles();
+    expect(pending?.targetToolSlug).toBe('png-to-pdf');
+    expect(pending?.files).toEqual([pngFile]);
   });
 });
 

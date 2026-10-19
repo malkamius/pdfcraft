@@ -4,6 +4,13 @@ import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { UploadCloud, File, Plus, X, Lock, Loader2 } from 'lucide-react';
 import { isTauri } from '@/lib/tauri-bridge';
+import {
+  MIME_TO_EXTENSIONS,
+  getMimeTypeForFilename,
+  consumePendingDroppedFiles,
+  subscribePendingDroppedFiles,
+  routeDroppedFiles,
+} from '@/lib/utils/file-tool-router';
 
 export interface FileUploaderProps {
   /** Accepted file types (MIME types or extensions) */
@@ -164,26 +171,44 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       }
 
       // Check file type
+      const lowerFileName = file.name.toLowerCase();
       const isValidType = accept.some(type => {
+        const lowerType = type.toLowerCase();
         // Accept all files
-        if (type === '*/*' || type === '*') {
+        if (lowerType === '*/*' || lowerType === '*') {
           return true;
         }
-        if (type.startsWith('.')) {
+        if (lowerType.startsWith('.')) {
           // Extension check
-          return file.name.toLowerCase().endsWith(type.toLowerCase());
+          return lowerFileName.endsWith(lowerType);
         }
-        if (type.endsWith('/*')) {
+        if (lowerType.endsWith('/*')) {
           // Wildcard MIME type
-          const baseType = type.slice(0, -2);
-          return file.type.startsWith(baseType);
+          const baseType = lowerType.slice(0, -2);
+          if (file.type && file.type.toLowerCase().startsWith(baseType)) {
+            return true;
+          }
+          // Fallback extension check for image/*
+          if (baseType === 'image') {
+            return ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.svg', '.heic', '.heif'].some(ext =>
+              lowerFileName.endsWith(ext)
+            );
+          }
+          return false;
         }
-        // Exact MIME type match
-        return file.type === type;
+        // Exact MIME type match or fallback extension match for that MIME type
+        if (file.type && file.type.toLowerCase() === lowerType) {
+          return true;
+        }
+        const mappedExts = MIME_TO_EXTENSIONS[lowerType];
+        if (mappedExts && mappedExts.some(ext => lowerFileName.endsWith(ext))) {
+          return true;
+        }
+        return false;
       });
 
       // Also check by extension for PDF files
-      const isPdfByExtension = file.name.toLowerCase().endsWith('.pdf');
+      const isPdfByExtension = lowerFileName.endsWith('.pdf');
       const acceptsPdf = accept.includes('application/pdf');
 
       if (!isValidType && !(acceptsPdf && isPdfByExtension)) {
@@ -264,6 +289,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       onError(errors[0]);
     }
 
+    if (valid.length === 0) {
+      // If none of the dropped files are valid for the current tool,
+      // route them to a compatible tool window (or tool selection modal) if available
+      routeDroppedFiles(fileArray);
+      return;
+    }
+
     if (valid.length > 0) {
       // Async scan for encrypted PDF files
       const encryptedList: File[] = [];
@@ -291,6 +323,25 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       }
     }
   }, [disabled, validateFiles, onError, onFilesSelected]);
+
+  // Automatically consume any pending dropped files handed off from another route or global drop
+  useEffect(() => {
+    if (disabled) return;
+
+    const initialPending = consumePendingDroppedFiles();
+    if (initialPending && initialPending.length > 0) {
+      handleFiles(initialPending);
+    }
+
+    const unsubscribe = subscribePendingDroppedFiles(() => {
+      const pending = consumePendingDroppedFiles();
+      if (pending && pending.length > 0) {
+        handleFiles(pending);
+      }
+    });
+
+    return unsubscribe;
+  }, [disabled, handleFiles]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -420,15 +471,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
             try {
               const bytes = await readFile(filePath);
               const name = filePath.split(/[/\\]/).pop() || 'file.pdf';
-              
-              let mimeType = 'application/octet-stream';
-              if (name.toLowerCase().endsWith('.pdf')) {
-                mimeType = 'application/pdf';
-              } else if (name.toLowerCase().endsWith('.png')) {
-                mimeType = 'image/png';
-              } else if (name.toLowerCase().endsWith('.jpg') || name.toLowerCase().endsWith('.jpeg')) {
-                mimeType = 'image/jpeg';
-              }
+              const mimeType = getMimeTypeForFilename(name);
 
               const file = new (window as any).File([bytes], name, { type: mimeType }) as File;
               fileObjects.push(file);

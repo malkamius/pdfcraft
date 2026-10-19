@@ -41,6 +41,16 @@ import {
 import { saveBlobFile, isTauri, getSystemPrinters, printPdfFile } from '@/lib/tauri-bridge';
 import { withBasePath } from '@/lib/utils/path';
 import { getToolContent, type Locale } from '@/config/tool-content';
+import type { Tool } from '@/types/tool';
+import { ToolSelectionModal } from '@/components/common/ToolSelectionModal';
+import {
+  isPdfFile,
+  getCompatibleToolsForFiles,
+  filterFilesForTool,
+  setPendingDroppedFiles,
+  consumePendingDroppedFiles,
+  getMimeTypeForFilename,
+} from '@/lib/utils/file-tool-router';
 
 interface PDFStudioProps {
   locale?: string;
@@ -128,6 +138,11 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     message: string;
   } | null>(null);
 
+  // Tool selection modal states for non-PDF dropped files
+  const [toolModalFiles, setToolModalFiles] = useState<File[]>([]);
+  const [toolModalTools, setToolModalTools] = useState<Tool[]>([]);
+  const [isToolModalOpen, setIsToolModalOpen] = useState<boolean>(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const multiFileInputRef = useRef<HTMLInputElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -178,63 +193,150 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     }, 3000);
   }, []);
 
+  const handleSelectToolForDroppedFiles = useCallback(
+    (tool: Tool, validFiles: File[]) => {
+      setIsToolModalOpen(false);
+      setPendingDroppedFiles(validFiles, tool.slug);
+      router.push(`/${validLocale}/tools/${tool.slug}`);
+    },
+    [router, validLocale]
+  );
+
   // Handle loading multiple files (or single file)
   const handleAddFiles = useCallback(
     (incomingFiles: FileList | File[]) => {
-      const validPdfs = Array.from(incomingFiles).filter(
-        (f) => f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf'
+      const incomingArray = Array.from(incomingFiles);
+      if (incomingArray.length === 0) return;
+
+      const validPdfs = incomingArray.filter(
+        (f) => isPdfFile(f) || f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf'
+      );
+      const nonPdfFiles = incomingArray.filter(
+        (f) => !(isPdfFile(f) || f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf')
       );
 
-      if (validPdfs.length === 0) {
-        notify('error', isZh ? '请选择有效的 PDF 文件' : 'Please select a valid PDF file');
-        return;
+      if (validPdfs.length > 0) {
+        const newDocs: StudioDocument[] = validPdfs.map((f, idx) => ({
+          id: `doc_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
+          name: f.name,
+          file: f,
+          currentBlob: f,
+          historyStack: [],
+          redoStack: [],
+        }));
+
+        setDocuments((prev) => {
+          const toAdd: StudioDocument[] = [];
+          let activeIdToSet: string | null = null;
+
+          for (const newDoc of newDocs) {
+            const existing = prev.find(
+              (d) => d.name === newDoc.name && d.file.size === newDoc.file.size
+            );
+            if (existing) {
+              if (!activeIdToSet) activeIdToSet = existing.id;
+            } else {
+              toAdd.push(newDoc);
+              if (!activeIdToSet) activeIdToSet = newDoc.id;
+            }
+          }
+
+          if (activeIdToSet) {
+            setActiveDocId(activeIdToSet);
+          }
+
+          if (toAdd.length === 0) {
+            return prev;
+          }
+
+          return [...prev, ...toAdd];
+        });
+        setActiveToolId(null);
+        notify(
+          'success',
+          isZh
+            ? `已成功载入 ${newDocs.length} 个 PDF 文档`
+            : `Successfully loaded ${newDocs.length} PDF document(s)`
+        );
       }
 
-      const newDocs: StudioDocument[] = validPdfs.map((f, idx) => ({
-        id: `doc_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
-        name: f.name,
-        file: f,
-        currentBlob: f,
-        historyStack: [],
-        redoStack: [],
-      }));
-
-      setDocuments((prev) => {
-        const toAdd: StudioDocument[] = [];
-        let activeIdToSet: string | null = null;
-
-        for (const newDoc of newDocs) {
-          const existing = prev.find(
-            (d) => d.name === newDoc.name && d.file.size === newDoc.file.size
-          );
-          if (existing) {
-            if (!activeIdToSet) activeIdToSet = existing.id;
-          } else {
-            toAdd.push(newDoc);
-            if (!activeIdToSet) activeIdToSet = newDoc.id;
-          }
+      if (nonPdfFiles.length > 0) {
+        const compatibleTools = getCompatibleToolsForFiles(nonPdfFiles);
+        if (compatibleTools.length === 1) {
+          const targetTool = compatibleTools[0];
+          const validFiles = filterFilesForTool(nonPdfFiles, targetTool);
+          handleSelectToolForDroppedFiles(targetTool, validFiles);
+          return;
+        } else if (compatibleTools.length > 1) {
+          setToolModalFiles(nonPdfFiles);
+          setToolModalTools(compatibleTools);
+          setIsToolModalOpen(true);
+          return;
+        } else if (validPdfs.length === 0) {
+          notify('error', isZh ? '请选择有效的 PDF 文件' : 'Please select a valid PDF file');
+          return;
         }
-
-        if (activeIdToSet) {
-          setActiveDocId(activeIdToSet);
-        }
-
-        if (toAdd.length === 0) {
-          return prev;
-        }
-
-        return [...prev, ...toAdd];
-      });
-      setActiveToolId(null);
-      notify(
-        'success',
-        isZh
-          ? `已成功载入 ${newDocs.length} 个 PDF 文档`
-          : `Successfully loaded ${newDocs.length} PDF document(s)`
-      );
+      }
     },
-    [notify, isZh]
+    [notify, isZh, handleSelectToolForDroppedFiles]
   );
+
+  // Consume any pending PDF files routed to Studio on mount
+  useEffect(() => {
+    const pendingStudioFiles = consumePendingDroppedFiles('studio');
+    if (pendingStudioFiles && pendingStudioFiles.length > 0) {
+      handleAddFiles(pendingStudioFiles);
+    }
+  }, [handleAddFiles]);
+
+  // Support Tauri native drag-and-drop in Studio
+  useEffect(() => {
+    if (!isTauri()) return;
+    let active = true;
+    let unlistenDrop: (() => void) | null = null;
+
+    const setupTauriDrop = async () => {
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        const { readFile } = await import('@tauri-apps/plugin-fs');
+        const appWindow = getCurrentWebviewWindow();
+        if (!active) return;
+
+        unlistenDrop = await appWindow.listen<{ paths: string[] }>('tauri://drag-drop', async (event) => {
+          const paths = event.payload.paths;
+          if (!paths || paths.length === 0) return;
+
+          const fileObjects: File[] = [];
+          for (const filePath of paths) {
+            try {
+              const bytes = await readFile(filePath);
+              const name = filePath.split(/[/\\]/).pop() || 'file.pdf';
+              const mimeType = getMimeTypeForFilename(name);
+              const f = new (window as any).File([bytes], name, { type: mimeType }) as File;
+              fileObjects.push(f);
+            } catch (err) {
+              console.error(`Tauri failed to read dragged file in Studio: ${filePath}`, err);
+            }
+          }
+          if (fileObjects.length > 0) {
+            handleAddFiles(fileObjects);
+          }
+        });
+
+        if (!active && unlistenDrop) {
+          unlistenDrop();
+        }
+      } catch (err) {
+        console.error('Failed to setup Tauri drag-drop in Studio:', err);
+      }
+    };
+
+    setupTauriDrop();
+    return () => {
+      active = false;
+      if (unlistenDrop) unlistenDrop();
+    };
+  }, [handleAddFiles]);
 
   const handleLoadFile = useCallback(
     (selectedFile: File) => {
@@ -627,7 +729,11 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
   }, [handleUndo, handleRedo, handleExport, handlePrint]);
 
   return (
-    <div className={`h-screen flex flex-col bg-[hsl(var(--color-background))] select-none ${className}`.trim()}>
+    <div
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
+      className={`h-screen flex flex-col bg-[hsl(var(--color-background))] select-none ${className}`.trim()}
+    >
       {/* Studio Header (Compact Toolbar - 52px) */}
       <header className="h-[52px] flex-shrink-0 border-b border-[hsl(var(--color-border))] bg-[hsl(var(--color-card)/0.9)] backdrop-blur-md px-4 flex items-center justify-between z-30 relative">
         {/* Left: Brand & File Info */}
@@ -1186,6 +1292,16 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           </div>
         )}
       </div>
+
+      {/* Tool Selection Modal for Non-PDF Files */}
+      <ToolSelectionModal
+        isOpen={isToolModalOpen}
+        onClose={() => setIsToolModalOpen(false)}
+        files={toolModalFiles}
+        tools={toolModalTools}
+        locale={validLocale}
+        onSelectTool={handleSelectToolForDroppedFiles}
+      />
 
       {/* Toast Notification */}
       {notification && (
