@@ -338,3 +338,37 @@ export async function printPdfFile(
   return { success: false, error: 'Environment does not support printing' };
 }
 
+/**
+ * Closes/exits the application window in Tauri desktop or browser environments.
+ */
+export async function closeAppWindow(): Promise<void> {
+  if (isTauri()) {
+    try {
+      const invoke = await getTauriInvoke();
+      await invoke('close_app');
+      return;
+    } catch {
+      // Fallback to webviewWindow destroy/close
+    }
+
+    try {
+      const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      await getCurrentWebviewWindow().destroy();
+      return;
+    } catch {
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        await getCurrentWebviewWindow().close();
+        return;
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
+  if (typeof window !== 'undefined' && typeof window.close === 'function') {
+    window.close();
+  }
+}
+
+

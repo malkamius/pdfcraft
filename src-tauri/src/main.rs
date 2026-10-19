@@ -425,8 +425,14 @@ fn main() {
             get_temp_dir,
             open_url,
             get_system_printers,
-            print_pdf_file
+            print_pdf_file,
+            close_app
         ])
         .run(context)
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn close_app(app: tauri::AppHandle) {
+    app.exit(0);
 }

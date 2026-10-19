@@ -313,11 +313,15 @@ services:
 
 ## 📜 Scripts
 
-- `npm run dev`: Starts the development server with Turbopack. Automatically runs `predev` to decompress LibreOffice WASM files.
-- `npm run build`: Builds the application for production. Automatically runs `postbuild` to decompress WASM files in `out/`.
+- `npm run dev`: Starts the Next.js development server with Turbopack. Automatically runs `predev` to decompress LibreOffice WASM files.
+- `npm run dev:tauri`: Starts Tauri desktop application in development mode with live reload.
+- `npm run build`: Builds the static web application export to `out/`.
+- `npm run build:tauri`: Builds the Tauri desktop installer packages for the current platform (e.g. NSIS/MSI on Windows).
 - `npm run start`: Starts the production server.
 - `npm run lint`: Lints the code using ESLint.
 - `npm run test`: Runs tests using Vitest.
+
+> 🔨 **For full multi-platform desktop, web, Docker, and extension build instructions, see [BUILD.md](BUILD.md)**
 
 ## 🚀 Production Deployment Guide
 

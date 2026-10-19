@@ -5,6 +5,7 @@ import { PDFStudio } from '@/components/studio/PDFStudio';
 import * as tauriBridge from '@/lib/tauri-bridge';
 import * as studioProcessors from '@/components/studio/studio-processors';
 import { clearPendingDroppedFiles, peekPendingDroppedFiles } from '@/lib/utils/file-tool-router';
+import { clearAllAutoBackups, clearRecentFileBlobs } from '@/lib/storage/auto-backup';
 
 const mockPush = vi.fn();
 
@@ -42,22 +43,27 @@ vi.mock('@/lib/tauri-bridge', () => ({
   saveBlobFile: vi.fn().mockResolvedValue(true),
   getSystemPrinters: vi.fn().mockResolvedValue([]),
   printPdfFile: vi.fn().mockResolvedValue(true),
+  closeAppWindow: vi.fn().mockResolvedValue(undefined),
 }));
 
 const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
 
 describe('PDFStudio Component', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear();
+    await clearAllAutoBackups();
+    await clearRecentFileBlobs();
     clearPendingDroppedFiles();
     URL.createObjectURL = vi.fn(() => 'blob:mock-studio-url');
     URL.revokeObjectURL = vi.fn();
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     localStorage.clear();
+    await clearAllAutoBackups();
+    await clearRecentFileBlobs();
     clearPendingDroppedFiles();
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
@@ -506,6 +512,150 @@ describe('PDFStudio Component', () => {
     const pending = peekPendingDroppedFiles();
     expect(pending?.targetToolSlug).toBe('png-to-pdf');
     expect(pending?.files).toEqual([pngFile]);
+  });
+
+  it('asks whether to save changes first when closing a modified document and supports Save & Close', async () => {
+    const mockOutputBlob = new Blob(['%PDF-1.4 modified content'], { type: 'application/pdf' });
+    vi.spyOn(studioProcessors, 'executeStudioOperation').mockResolvedValue(mockOutputBlob);
+
+    const file = createDummyPdfFile('report.pdf');
+    render(<PDFStudio locale="en" initialFile={file} />);
+
+    // Modify document by applying Rotate tool
+    const rotateBtn = screen.getAllByRole('button', { name: /Rotate/i })[0];
+    fireEvent.click(rotateBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Apply Changes/i }));
+
+    await waitFor(() => {
+      expect(studioProcessors.executeStudioOperation).toHaveBeenCalled();
+      expect(screen.getByTestId('unsaved-indicator-report.pdf')).toBeInTheDocument();
+    });
+
+    // Attempt to close the modified document tab
+    const closeBtn = screen.getByLabelText('Close report.pdf');
+    fireEvent.click(closeBtn);
+
+    // Unsaved changes modal should appear asking if they want to save their changes first
+    expect(screen.getByTestId('unsaved-changes-modal')).toBeInTheDocument();
+    expect(screen.getByText(/Save Changes Before Closing\?/i)).toBeInTheDocument();
+    expect(screen.getByText(/Document "report\.pdf" has unsaved changes/i)).toBeInTheDocument();
+
+    // 1. Clicking Cancel keeps the document open
+    fireEvent.click(screen.getByTestId('unsaved-modal-cancel'));
+    expect(screen.queryByTestId('unsaved-changes-modal')).not.toBeInTheDocument();
+    expect(screen.getByTitle('report.pdf')).toBeInTheDocument();
+
+    // 2. Click close again and choose Save & Close
+    fireEvent.click(closeBtn);
+    expect(screen.getByTestId('unsaved-changes-modal')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('unsaved-modal-save'));
+
+    await waitFor(() => {
+      expect(tauriBridge.saveBlobFile).toHaveBeenCalledWith(
+        mockOutputBlob,
+        'report_crafted.pdf'
+      );
+      expect(screen.queryByTitle('report.pdf')).not.toBeInTheDocument();
+    });
+  });
+
+  it('auto-backups modified files and allows recovering them from the Recover Auto-Backup list and reopening Recent Files', async () => {
+    const mockOutputBlob = new Blob(['%PDF-1.4 backed-up edits'], { type: 'application/pdf' });
+    vi.spyOn(studioProcessors, 'executeStudioOperation').mockResolvedValue(mockOutputBlob);
+
+    const file = createDummyPdfFile('important-contract.pdf');
+    render(<PDFStudio locale="en" initialFile={file} />);
+
+    // Apply Rotate operation so the document becomes modified and auto-backed up
+    const rotateBtn = screen.getAllByRole('button', { name: /Rotate/i })[0];
+    fireEvent.click(rotateBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Apply Changes/i }));
+
+    await waitFor(() => {
+      expect(studioProcessors.executeStudioOperation).toHaveBeenCalled();
+    });
+
+    // Close without saving ("Don't Save") to return to the Studio welcome screen
+    fireEvent.click(screen.getByLabelText('Close important-contract.pdf'));
+    expect(screen.getByTestId('unsaved-changes-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('unsaved-modal-discard'));
+
+    // Welcome screen should now display both the Recover Auto-Backup Files list and Recent Files list
+    await waitFor(() => {
+      expect(screen.getByTestId('studio-auto-backup-list')).toBeInTheDocument();
+      expect(screen.getByTestId('studio-recent-files-list')).toBeInTheDocument();
+    });
+
+    // Recover Auto-Backup list shows the modified file and edit count
+    expect(screen.getByText(/\+1 edit\(s\)/i)).toBeInTheDocument();
+
+    // Click Recover on the auto-backup entry
+    const recoverBtn = screen.getByRole('button', { name: 'Recover' });
+    fireEvent.click(recoverBtn);
+
+    // Document should be restored into Studio with its unsaved changes and history intact
+    await waitFor(() => {
+      expect(screen.getByTitle('important-contract.pdf')).toBeInTheDocument();
+      expect(screen.getByTestId('unsaved-indicator-important-contract.pdf')).toBeInTheDocument();
+      expect(screen.getByText('+1 action(s)')).toBeInTheDocument();
+    });
+
+    // Also verify the Recent & Backups header popover opens and lists both sections
+    fireEvent.click(screen.getByTestId('studio-recent-backups-btn'));
+    expect(screen.getByTestId('studio-recent-backups-popover')).toBeInTheDocument();
+    expect(screen.getByText(/Recent Files & Auto-Backups/i)).toBeInTheDocument();
+  });
+
+  it('closes the Tauri application window when clicking Don\'t Save on exit with modified files', async () => {
+    let capturedCloseHandler: ((event: { preventDefault: () => void }) => Promise<void>) | null = null;
+    vi.doMock('@tauri-apps/api/webviewWindow', () => ({
+      getCurrentWebviewWindow: () => ({
+        onCloseRequested: vi.fn(async (cb) => {
+          capturedCloseHandler = cb;
+          return () => {};
+        }),
+      }),
+    }));
+    vi.mocked(tauriBridge.isTauri).mockReturnValue(true);
+
+    const mockOutputBlob = new Blob(['%PDF-1.4 modified content'], { type: 'application/pdf' });
+    vi.spyOn(studioProcessors, 'executeStudioOperation').mockResolvedValue(mockOutputBlob);
+
+    const file = createDummyPdfFile('exit-test.pdf');
+    render(<PDFStudio locale="en" initialFile={file} />);
+
+    await waitFor(() => {
+      expect(capturedCloseHandler).not.toBeNull();
+    });
+
+    // Modify document
+    const rotateBtn = screen.getAllByRole('button', { name: /Rotate/i })[0];
+    fireEvent.click(rotateBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Apply Changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-indicator-exit-test.pdf')).toBeInTheDocument();
+    });
+
+    // Simulate user clicking the Tauri window 'X' button
+    const preventDefault = vi.fn();
+    await capturedCloseHandler!({ preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
+
+    // Unsaved changes modal should open
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-changes-modal')).toBeInTheDocument();
+    });
+
+    // Click "Don't Save"
+    fireEvent.click(screen.getByTestId('unsaved-modal-discard'));
+
+    await waitFor(() => {
+      expect(tauriBridge.closeAppWindow).toHaveBeenCalledTimes(1);
+    });
+
+    vi.mocked(tauriBridge.isTauri).mockReturnValue(false);
   });
 });
 

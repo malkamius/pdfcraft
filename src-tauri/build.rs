@@ -30,6 +30,7 @@ fn main() {
             "open_url",
             "get_system_printers",
             "print_pdf_file",
+            "close_app",
         ]),
     );
     if let Err(error) = tauri_build::try_build(attributes) {

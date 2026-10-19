@@ -8,6 +8,8 @@
   },
   "permissions": [
     "core:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
     "dialog:default",
     "fs:default",
     "allow-open-files",
@@ -17,6 +19,7 @@
     "allow-get-temp-dir",
     "allow-open-url",
     "allow-get-system-printers",
-    "allow-print-pdf-file"
+    "allow-print-pdf-file",
+    "allow-close-app"
   ]
 }

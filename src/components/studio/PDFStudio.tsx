@@ -24,6 +24,10 @@ import {
   Loader2,
   Plus,
   Files,
+  Trash2,
+  ShieldAlert,
+  Save,
+  FolderOpen,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { Button } from '@/components/ui/Button';
@@ -38,7 +42,7 @@ import {
   findStudioToolConfig,
   addStudioRecentTool,
 } from './studio-processors';
-import { saveBlobFile, isTauri, getSystemPrinters, printPdfFile } from '@/lib/tauri-bridge';
+import { saveBlobFile, isTauri, getSystemPrinters, printPdfFile, closeAppWindow } from '@/lib/tauri-bridge';
 import { withBasePath } from '@/lib/utils/path';
 import { getToolContent, type Locale } from '@/config/tool-content';
 import type { Tool } from '@/types/tool';
@@ -51,6 +55,28 @@ import {
   consumePendingDroppedFiles,
   getMimeTypeForFilename,
 } from '@/lib/utils/file-tool-router';
+import {
+  type RecentFile,
+  getRecentFiles,
+  addRecentFile,
+  removeRecentFile,
+  clearRecentFiles,
+  formatFileSize,
+  formatDate,
+} from '@/lib/storage/recent-files';
+import {
+  type AutoBackupMetadata,
+  getAutoBackupsMetadata,
+  saveAutoBackup,
+  recoverAutoBackup,
+  removeAutoBackup,
+  clearAllAutoBackups,
+  saveRecentFileBlob,
+  getRecentFileBlob,
+  removeRecentFileBlob,
+  clearRecentFileBlobs,
+  consumePendingStudioRecoveryId,
+} from '@/lib/storage/auto-backup';
 
 interface PDFStudioProps {
   locale?: string;
@@ -71,6 +97,16 @@ export interface StudioDocument {
   currentBlob: Blob;
   historyStack: HistoryItem[];
   redoStack: HistoryItem[];
+  isModified?: boolean;
+}
+
+type PendingCloseAction =
+  | { type: 'close-doc'; docId: string; docName: string }
+  | { type: 'navigate'; href: string }
+  | { type: 'tauri-close' };
+
+function isDocModified(doc: StudioDocument): boolean {
+  return doc.isModified ?? doc.historyStack.length > 0;
 }
 
 export const PDFStudio: React.FC<PDFStudioProps> = ({
@@ -93,6 +129,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           currentBlob: initialFile,
           historyStack: [],
           redoStack: [],
+          isModified: false,
         },
       ];
     }
@@ -102,6 +139,11 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     return initialFile ? 'doc-init' : null;
   });
 
+  const documentsRef = useRef<StudioDocument[]>(documents);
+  useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
+
   const activeDoc = useMemo(() => {
     return documents.find((d) => d.id === activeDocId) || documents[0] || null;
   }, [documents, activeDocId]);
@@ -110,6 +152,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
   const currentBlob = activeDoc ? activeDoc.currentBlob : null;
   const historyStack = activeDoc ? activeDoc.historyStack : [];
   const redoStack = activeDoc ? activeDoc.redoStack : [];
+  const hasAnyModifiedDocs = useMemo(() => documents.some(isDocModified), [documents]);
 
   const availableDocuments = useMemo(() => {
     if (!activeDoc) return [];
@@ -124,9 +167,17 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
   const [isApplying, setIsApplying] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
+  const [isRecentBackupOpen, setIsRecentBackupOpen] = useState<boolean>(false);
   const [isOcrTextOpen, setIsOcrTextOpen] = useState<boolean>(false);
   const [ocrExportFormat, setOcrExportFormat] = useState<string>('searchable-pdf');
   const [ocrCopied, setOcrCopied] = useState<boolean>(false);
+
+  // Recent files & Auto-backup states
+  const [recentFilesList, setRecentFilesList] = useState<RecentFile[]>([]);
+  const [autoBackupsList, setAutoBackupsList] = useState<AutoBackupMetadata[]>([]);
+
+  // Unsaved changes confirmation modal state
+  const [pendingCloseAction, setPendingCloseAction] = useState<PendingCloseAction | null>(null);
 
   const ocrMeta = useMemo(() => {
     return (currentBlob as any)?.__metadata || null;
@@ -146,6 +197,21 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const multiFileInputRef = useRef<HTMLInputElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const refreshStorageLists = useCallback(() => {
+    setRecentFilesList(getRecentFiles());
+    setAutoBackupsList(getAutoBackupsMetadata());
+  }, []);
+
+  useEffect(() => {
+    refreshStorageLists();
+    if (initialFile) {
+      addRecentFile(initialFile.name, initialFile.size, 'studio', 'PDF Studio');
+      void saveRecentFileBlob(initialFile.name, initialFile).then(() => {
+        refreshStorageLists();
+      });
+    }
+  }, [initialFile, refreshStorageLists]);
 
   // Restore sidebar collapse state
   useEffect(() => {
@@ -223,7 +289,14 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           currentBlob: f,
           historyStack: [],
           redoStack: [],
+          isModified: false,
         }));
+
+        for (const f of validPdfs) {
+          addRecentFile(f.name, f.size, 'studio', 'PDF Studio');
+          void saveRecentFileBlob(f.name, f);
+        }
+        refreshStorageLists();
 
         setDocuments((prev) => {
           const toAdd: StudioDocument[] = [];
@@ -278,16 +351,242 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         }
       }
     },
-    [notify, isZh, handleSelectToolForDroppedFiles]
+    [notify, isZh, handleSelectToolForDroppedFiles, refreshStorageLists]
   );
 
-  // Consume any pending PDF files routed to Studio on mount
+  // Recover an auto-backed-up document into Studio
+  const handleRecoverAutoBackup = useCallback(
+    async (backupId: string) => {
+      try {
+        const entry = await recoverAutoBackup(backupId);
+        if (!entry) {
+          notify('error', isZh ? '无法读取该自动备份数据' : 'Could not recover auto-backup data');
+          return;
+        }
+
+        const baseBlob = entry.originalBlob || entry.blob;
+        const originalFile = new File([baseBlob], entry.name, { type: 'application/pdf' });
+        const actions =
+          Array.isArray(entry.historyActions) && entry.historyActions.length > 0
+            ? entry.historyActions
+            : [entry.lastAction || (isZh ? '已恢复的修改' : 'Recovered edit')];
+
+        const restoredHistory: HistoryItem[] = actions.map((act) => ({
+          blob: baseBlob,
+          name: entry.name,
+          action: act,
+        }));
+
+        const recoveredDoc: StudioDocument = {
+          id: entry.id,
+          name: entry.name,
+          file: originalFile,
+          currentBlob: entry.blob,
+          historyStack: restoredHistory,
+          redoStack: [],
+          isModified: true,
+        };
+
+        setDocuments((prev) => {
+          const existingIdx = prev.findIndex((d) => d.id === entry.id);
+          if (existingIdx >= 0) {
+            const copy = [...prev];
+            copy[existingIdx] = recoveredDoc;
+            return copy;
+          }
+          return [...prev, recoveredDoc];
+        });
+        setActiveDocId(recoveredDoc.id);
+        setActiveToolId(null);
+        setIsRecentBackupOpen(false);
+        notify(
+          'success',
+          isZh
+            ? `已恢复未保存的自动备份文档「${entry.name}」`
+            : `Recovered auto-backup document "${entry.name}"`
+        );
+      } catch (err: any) {
+        notify(
+          'error',
+          err?.message || (isZh ? '恢复自动备份失败' : 'Failed to recover auto-backup')
+        );
+      }
+    },
+    [notify, isZh]
+  );
+
+  // Directly download/save an auto-backup file to disk
+  const handleDownloadAutoBackup = useCallback(
+    async (backupId: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      try {
+        const entry = await recoverAutoBackup(backupId);
+        if (!entry) {
+          notify('error', isZh ? '无法读取该自动备份数据' : 'Could not recover auto-backup data');
+          return;
+        }
+        const fileName = entry.name.replace(/\.pdf$/i, '_recovered.pdf');
+        const isDownloaded = await saveBlobFile(entry.blob, fileName);
+        if (isDownloaded) {
+          addRecentFile(fileName, entry.blob.size, 'studio', 'PDF Studio');
+          await saveRecentFileBlob(fileName, entry.blob);
+          await removeAutoBackup(backupId);
+          refreshStorageLists();
+          notify(
+            'success',
+            isZh ? `已保存自动备份文件「${fileName}」` : `Saved auto-backup as "${fileName}"`
+          );
+        }
+      } catch (err: any) {
+        notify('error', err?.message || (isZh ? '保存自动备份失败' : 'Failed to save auto-backup'));
+      }
+    },
+    [notify, isZh, refreshStorageLists]
+  );
+
+  const handleDeleteAutoBackup = useCallback(
+    async (backupId: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      await removeAutoBackup(backupId);
+      refreshStorageLists();
+    },
+    [refreshStorageLists]
+  );
+
+  const handleClearAutoBackups = useCallback(async () => {
+    await clearAllAutoBackups();
+    refreshStorageLists();
+  }, [refreshStorageLists]);
+
+  // Open a recent file in Studio
+  const handleOpenRecentStudioFile = useCallback(
+    async (recent: RecentFile) => {
+      setIsRecentBackupOpen(false);
+      try {
+        const blob = await getRecentFileBlob(recent.name);
+        if (blob) {
+          const restoredFile = new File([blob], recent.name, {
+            type: blob.type || 'application/pdf',
+          });
+          handleAddFiles([restoredFile]);
+          return;
+        }
+      } catch {}
+
+      if (recent.toolUsed && recent.toolUsed !== 'studio') {
+        router.push(`/${validLocale}/tools/${recent.toolUsed}`);
+        return;
+      }
+
+      notify(
+        'error',
+        isZh
+          ? `未找到「${recent.name}」的本地缓存，请重新选择文件`
+          : `Cached data for "${recent.name}" is unavailable. Please select the file from disk`
+      );
+      fileInputRef.current?.click();
+    },
+    [handleAddFiles, router, validLocale, notify, isZh]
+  );
+
+  const handleRemoveRecentStudioFile = useCallback(
+    async (id: string, name: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      removeRecentFile(id);
+      await removeRecentFileBlob(name);
+      refreshStorageLists();
+    },
+    [refreshStorageLists]
+  );
+
+  const handleClearRecentStudioFiles = useCallback(async () => {
+    clearRecentFiles();
+    await clearRecentFileBlobs();
+    refreshStorageLists();
+  }, [refreshStorageLists]);
+
+  // Consume any pending PDF files or pending auto-backup recovery routed to Studio on mount
   useEffect(() => {
     const pendingStudioFiles = consumePendingDroppedFiles('studio');
     if (pendingStudioFiles && pendingStudioFiles.length > 0) {
       handleAddFiles(pendingStudioFiles);
     }
-  }, [handleAddFiles]);
+    const pendingRecoveryId = consumePendingStudioRecoveryId();
+    if (pendingRecoveryId) {
+      void handleRecoverAutoBackup(pendingRecoveryId);
+    }
+  }, [handleAddFiles, handleRecoverAutoBackup]);
+
+  const isClosingAppRef = useRef<boolean>(false);
+
+  // Warn before browser tab close / reload when modified documents are open, and flush auto-backups
+  useEffect(() => {
+    if (!hasAnyModifiedDocs) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isClosingAppRef.current) return;
+
+      const modifiedDocs = documentsRef.current.filter(isDocModified);
+      if (modifiedDocs.length === 0) return;
+
+      for (const doc of modifiedDocs) {
+        void saveAutoBackup(doc);
+      }
+
+      // In Tauri desktop, onCloseRequested handles the custom modal prompt;
+      // skip native beforeunload prevention so WebView2 does not block window exit.
+      if (isTauri()) return;
+
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasAnyModifiedDocs]);
+
+  // Intercept Tauri window close request when modified documents are open
+  useEffect(() => {
+    if (!isTauri()) return;
+    let active = true;
+    let unlistenClose: (() => void) | null = null;
+
+    const setupTauriCloseGuard = async () => {
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        const appWindow = getCurrentWebviewWindow();
+        if (!active) return;
+
+        unlistenClose = await appWindow.onCloseRequested((event) => {
+          if (isClosingAppRef.current) {
+            return;
+          }
+          const modifiedDocs = documentsRef.current.filter(isDocModified);
+          if (modifiedDocs.length > 0) {
+            event.preventDefault();
+            for (const doc of modifiedDocs) {
+              void saveAutoBackup(doc);
+            }
+            refreshStorageLists();
+            setPendingCloseAction({ type: 'tauri-close' });
+          }
+        });
+
+        if (!active && unlistenClose) {
+          unlistenClose();
+        }
+      } catch (err) {
+        console.error('Failed to setup Tauri close guard in Studio:', err);
+      }
+    };
+
+    setupTauriCloseGuard();
+    return () => {
+      active = false;
+      if (unlistenClose) unlistenClose();
+    };
+  }, [refreshStorageLists]);
 
   // Support Tauri native drag-and-drop in Studio
   useEffect(() => {
@@ -350,22 +649,9 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     setActiveToolId(null);
   }, []);
 
-  const handleCloseDocument = useCallback(
-    (docId: string, e?: React.MouseEvent) => {
-      if (e) e.stopPropagation();
+  const removeDocumentDirectly = useCallback(
+    (docId: string) => {
       setDocuments((prev) => {
-        const targetDoc = prev.find((d) => d.id === docId);
-        if (targetDoc && targetDoc.historyStack.length > 0) {
-          if (
-            !window.confirm(
-              isZh
-                ? `文档「${targetDoc.name}」包含未保存的修改，确定要关闭吗？`
-                : `Document "${targetDoc.name}" contains unsaved changes. Are you sure you want to close it?`
-            )
-          ) {
-            return prev;
-          }
-        }
         const remaining = prev.filter((d) => d.id !== docId);
         if (activeDocId === docId) {
           const closedIdx = prev.findIndex((d) => d.id === docId);
@@ -377,6 +663,141 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     },
     [activeDocId]
   );
+
+  const handleCloseDocument = useCallback(
+    (docId: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      const targetDoc = documents.find((d) => d.id === docId);
+      if (!targetDoc) return;
+
+      if (isDocModified(targetDoc)) {
+        void saveAutoBackup(targetDoc).then(() => {
+          refreshStorageLists();
+        });
+        setPendingCloseAction({
+          type: 'close-doc',
+          docId: targetDoc.id,
+          docName: targetDoc.name,
+        });
+        return;
+      }
+
+      removeDocumentDirectly(docId);
+    },
+    [documents, removeDocumentDirectly, refreshStorageLists]
+  );
+
+  // Intercept navigation away from Studio when modified files are open
+  const handleGuardedNavigate = useCallback(
+    (e: React.MouseEvent, href: string) => {
+      if (hasAnyModifiedDocs) {
+        e.preventDefault();
+        for (const doc of documents.filter(isDocModified)) {
+          void saveAutoBackup(doc);
+        }
+        refreshStorageLists();
+        setPendingCloseAction({ type: 'navigate', href });
+      }
+    },
+    [hasAnyModifiedDocs, documents, refreshStorageLists]
+  );
+
+  // Handle "Save & Close" in the Unsaved Changes Modal
+  const handleConfirmSaveAndClose = useCallback(async () => {
+    if (!pendingCloseAction) return;
+
+    try {
+      if (pendingCloseAction.type === 'close-doc') {
+        const targetDoc = documents.find((d) => d.id === pendingCloseAction.docId);
+        if (!targetDoc) {
+          setPendingCloseAction(null);
+          return;
+        }
+        const fileName = targetDoc.name.replace(/\.pdf$/i, '_crafted.pdf');
+        const isDownloaded = await saveBlobFile(targetDoc.currentBlob, fileName);
+        if (!isDownloaded) {
+          // User cancelled native save dialog; stay open
+          return;
+        }
+        addRecentFile(fileName, targetDoc.currentBlob.size, 'studio', 'PDF Studio');
+        await saveRecentFileBlob(fileName, targetDoc.currentBlob);
+        await removeAutoBackup(targetDoc.id);
+        refreshStorageLists();
+        removeDocumentDirectly(targetDoc.id);
+        setPendingCloseAction(null);
+        notify(
+          'success',
+          isZh ? `已保存「${fileName}」并关闭文档` : `Saved "${fileName}" and closed document`
+        );
+        return;
+      }
+
+      // Navigate or Tauri window close with modified documents
+      const modifiedDocs = documents.filter(isDocModified);
+      for (const doc of modifiedDocs) {
+        const fileName = doc.name.replace(/\.pdf$/i, '_crafted.pdf');
+        const isDownloaded = await saveBlobFile(doc.currentBlob, fileName);
+        if (!isDownloaded) {
+          return;
+        }
+        addRecentFile(fileName, doc.currentBlob.size, 'studio', 'PDF Studio');
+        await saveRecentFileBlob(fileName, doc.currentBlob);
+        await removeAutoBackup(doc.id);
+      }
+
+      setDocuments((prev) => prev.map((d) => ({ ...d, isModified: false })));
+      refreshStorageLists();
+      const action = pendingCloseAction;
+      setPendingCloseAction(null);
+
+      if (action.type === 'navigate') {
+        router.push(action.href);
+      } else if (action.type === 'tauri-close') {
+        isClosingAppRef.current = true;
+        documentsRef.current = [];
+        await closeAppWindow();
+      }
+    } catch (err: any) {
+      notify(
+        'error',
+        err?.message || (isZh ? '保存文档失败' : 'Failed to save document before closing')
+      );
+    }
+  }, [pendingCloseAction, documents, refreshStorageLists, removeDocumentDirectly, notify, isZh, router]);
+
+  // Handle "Don't Save" in the Unsaved Changes Modal
+  const handleConfirmDiscardAndClose = useCallback(async () => {
+    if (!pendingCloseAction) return;
+
+    const action = pendingCloseAction;
+    setPendingCloseAction(null);
+
+    if (action.type === 'close-doc') {
+      const targetDoc = documents.find((d) => d.id === action.docId);
+      if (targetDoc) {
+        await saveAutoBackup(targetDoc);
+        refreshStorageLists();
+      }
+      removeDocumentDirectly(action.docId);
+      return;
+    }
+
+    const modifiedDocs = documents.filter(isDocModified);
+    // Ensure auto-backup does not hang window exit if IndexedDB is slow
+    await Promise.race([
+      Promise.all(modifiedDocs.map((doc) => saveAutoBackup(doc))),
+      new Promise<void>((resolve) => setTimeout(resolve, 150)),
+    ]);
+    refreshStorageLists();
+
+    if (action.type === 'navigate') {
+      router.push(action.href);
+    } else if (action.type === 'tauri-close') {
+      isClosingAppRef.current = true;
+      documentsRef.current = [];
+      await closeAppWindow();
+    }
+  }, [pendingCloseAction, documents, refreshStorageLists, removeDocumentDirectly, router]);
 
   // Handle Drag & Drop on Empty State and View Area
   const handleDrop = useCallback(
@@ -404,23 +825,27 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         const localizedContent = getToolContent(validLocale as Locale, toolId);
         const toolName = localizedContent?.title || toolConfig?.name || toolId;
 
+        const updatedHistory: HistoryItem[] = [
+          ...activeDoc.historyStack,
+          { blob: activeDoc.currentBlob, name: activeDoc.name, action: toolName },
+        ];
+        const updatedDoc: StudioDocument = {
+          ...activeDoc,
+          currentBlob: newBlob,
+          historyStack: updatedHistory,
+          redoStack: [],
+          isModified: true,
+        };
+
         // Push current state to active document undo history
         setDocuments((prevDocs) =>
-          prevDocs.map((doc) => {
-            if (doc.id === activeDoc.id) {
-              return {
-                ...doc,
-                currentBlob: newBlob,
-                historyStack: [
-                  ...doc.historyStack,
-                  { blob: doc.currentBlob, name: doc.name, action: toolName },
-                ],
-                redoStack: [],
-              };
-            }
-            return doc;
-          })
+          prevDocs.map((doc) => (doc.id === activeDoc.id ? updatedDoc : doc))
         );
+
+        // Automatically back up the modified document
+        void saveAutoBackup(updatedDoc).then(() => {
+          refreshStorageLists();
+        });
 
         setActiveToolId(null); // Close drawer
         addStudioRecentTool(toolId);
@@ -449,13 +874,13 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         setIsApplying(false);
       }
     },
-    [currentBlob, file, activeDoc, notify, validLocale, isZh]
+    [currentBlob, file, activeDoc, notify, validLocale, isZh, refreshStorageLists]
   );
 
   // Save/export in-memory OCR result in the selected format when user likes the results
   const handleSaveOcrResult = useCallback(
     async (formatOverride?: string) => {
-      if (!currentBlob || !file) return;
+      if (!currentBlob || !file || !activeDoc) return;
       const fmt = formatOverride || ocrExportFormat || 'searchable-pdf';
       const baseName = file.name.replace(/\.pdf$/i, '');
 
@@ -464,6 +889,13 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           const filename = `${baseName}_searchable.pdf`;
           const isDownloaded = await saveBlobFile(currentBlob, filename);
           if (isDownloaded) {
+            setDocuments((prev) =>
+              prev.map((d) => (d.id === activeDoc.id ? { ...d, isModified: false } : d))
+            );
+            addRecentFile(filename, currentBlob.size, 'studio', 'PDF Studio');
+            await saveRecentFileBlob(filename, currentBlob);
+            await removeAutoBackup(activeDoc.id);
+            refreshStorageLists();
             notify('success', isZh ? `已保存可搜索 PDF「${filename}」` : `Saved searchable PDF "${filename}"`);
           }
           return;
@@ -491,6 +923,11 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           if (targetBlob) {
             const isDownloaded = await saveBlobFile(targetBlob, filename);
             if (isDownloaded) {
+              setDocuments((prev) =>
+                prev.map((d) => (d.id === activeDoc.id ? { ...d, isModified: false } : d))
+              );
+              await removeAutoBackup(activeDoc.id);
+              refreshStorageLists();
               notify('success', isZh ? `已导出 OCR 结果「${filename}」` : `Exported OCR result "${filename}"`);
             }
             return;
@@ -500,7 +937,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         notify('error', err?.message || (isZh ? '保存导出失败' : 'Failed to save and export OCR result'));
       }
     },
-    [currentBlob, file, ocrExportFormat, ocrMeta, notify, isZh]
+    [currentBlob, file, activeDoc, ocrExportFormat, ocrMeta, notify, isZh, refreshStorageLists]
   );
 
   // Handle export/convert operation without altering central PDF viewer
@@ -537,25 +974,31 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
 
     const previousItem = activeDoc.historyStack[activeDoc.historyStack.length - 1];
     const newHistory = activeDoc.historyStack.slice(0, -1);
+    const nextIsModified = newHistory.length > 0;
+
+    const updatedDoc: StudioDocument = {
+      ...activeDoc,
+      currentBlob: previousItem.blob,
+      historyStack: newHistory,
+      redoStack: [
+        ...activeDoc.redoStack,
+        { blob: activeDoc.currentBlob, name: activeDoc.name, action: previousItem.action },
+      ],
+      isModified: nextIsModified,
+    };
 
     setDocuments((prev) =>
-      prev.map((doc) => {
-        if (doc.id === activeDoc.id) {
-          return {
-            ...doc,
-            currentBlob: previousItem.blob,
-            historyStack: newHistory,
-            redoStack: [
-              ...doc.redoStack,
-              { blob: doc.currentBlob, name: doc.name, action: previousItem.action },
-            ],
-          };
-        }
-        return doc;
-      })
+      prev.map((doc) => (doc.id === activeDoc.id ? updatedDoc : doc))
     );
+
+    if (nextIsModified) {
+      void saveAutoBackup(updatedDoc).then(() => refreshStorageLists());
+    } else {
+      void removeAutoBackup(activeDoc.id).then(() => refreshStorageLists());
+    }
+
     notify('success', isZh ? `已撤销「${previousItem.action}」` : `Undone "${previousItem.action}"`);
-  }, [activeDoc, notify, isZh]);
+  }, [activeDoc, notify, isZh, refreshStorageLists]);
 
   // Redo operation on active document
   const handleRedo = useCallback(() => {
@@ -564,24 +1007,25 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     const nextItem = activeDoc.redoStack[activeDoc.redoStack.length - 1];
     const newRedo = activeDoc.redoStack.slice(0, -1);
 
+    const updatedDoc: StudioDocument = {
+      ...activeDoc,
+      currentBlob: nextItem.blob,
+      historyStack: [
+        ...activeDoc.historyStack,
+        { blob: activeDoc.currentBlob, name: activeDoc.name, action: nextItem.action },
+      ],
+      redoStack: newRedo,
+      isModified: true,
+    };
+
     setDocuments((prev) =>
-      prev.map((doc) => {
-        if (doc.id === activeDoc.id) {
-          return {
-            ...doc,
-            currentBlob: nextItem.blob,
-            historyStack: [
-              ...doc.historyStack,
-              { blob: doc.currentBlob, name: doc.name, action: nextItem.action },
-            ],
-            redoStack: newRedo,
-          };
-        }
-        return doc;
-      })
+      prev.map((doc) => (doc.id === activeDoc.id ? updatedDoc : doc))
     );
+
+    void saveAutoBackup(updatedDoc).then(() => refreshStorageLists());
+
     notify('success', isZh ? `已重做「${nextItem.action}」` : `Redone "${nextItem.action}"`);
-  }, [activeDoc, notify, isZh]);
+  }, [activeDoc, notify, isZh, refreshStorageLists]);
 
   // Revert all changes on active document back to initial version
   const handleRevert = useCallback(() => {
@@ -601,11 +1045,13 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
               currentBlob: doc.file,
               historyStack: [],
               redoStack: [],
+              isModified: false,
             };
           }
           return doc;
         })
       );
+      void removeAutoBackup(activeDoc.id).then(() => refreshStorageLists());
       setActiveToolId(null);
       setIsHistoryOpen(false);
       notify(
@@ -613,7 +1059,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         isZh ? `已还原「${activeDoc.name}」至最初版本` : `Reverted "${activeDoc.name}" to original version`
       );
     }
-  }, [activeDoc, notify, isZh]);
+  }, [activeDoc, notify, isZh, refreshStorageLists]);
 
   // Batch Export all opened documents as a single ZIP archive
   const handleExportAllZip = useCallback(async () => {
@@ -629,29 +1075,43 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
       }
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const zipName = `pdfcraft_studio_batch_${Date.now()}.zip`;
-      await saveBlobFile(zipBlob, zipName);
-      notify(
-        'success',
-        isZh
-          ? `成功打包并导出全部 ${documents.length} 个文档`
-          : `Packaged and exported all ${documents.length} documents`
-      );
+      const isDownloaded = await saveBlobFile(zipBlob, zipName);
+      if (isDownloaded) {
+        setDocuments((prev) => prev.map((d) => ({ ...d, isModified: false })));
+        for (const doc of documents) {
+          await removeAutoBackup(doc.id);
+        }
+        refreshStorageLists();
+        notify(
+          'success',
+          isZh
+            ? `成功打包并导出全部 ${documents.length} 个文档`
+            : `Packaged and exported all ${documents.length} documents`
+        );
+      }
     } catch (err: any) {
       notify('error', err?.message || (isZh ? '打包导出失败' : 'Failed to package export'));
     } finally {
       setIsApplying(false);
       setIsExportMenuOpen(false);
     }
-  }, [documents, notify, isZh]);
+  }, [documents, notify, isZh, refreshStorageLists]);
 
   // Export / Save final document
   const handleExport = useCallback(async () => {
-    if (!currentBlob || !file) return;
+    if (!currentBlob || !file || !activeDoc) return;
 
     try {
       const fileName = file.name.replace(/\.pdf$/i, '_crafted.pdf');
       const isDownloaded = await saveBlobFile(currentBlob, fileName);
       if (isDownloaded) {
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === activeDoc.id ? { ...d, isModified: false } : d))
+        );
+        addRecentFile(fileName, currentBlob.size, 'studio', 'PDF Studio');
+        await saveRecentFileBlob(fileName, currentBlob);
+        await removeAutoBackup(activeDoc.id);
+        refreshStorageLists();
         notify(
           'success',
           isZh ? `文档已保存并导出「${fileName}」` : `Document saved and exported as "${fileName}"`
@@ -660,7 +1120,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     } catch (err: any) {
       notify('error', err?.message || (isZh ? '保存导出失败' : 'Failed to save and export document'));
     }
-  }, [currentBlob, file, notify, isZh]);
+  }, [currentBlob, file, activeDoc, notify, isZh, refreshStorageLists]);
 
   // Print current in-memory document
   const handlePrint = useCallback(async () => {
@@ -713,6 +1173,8 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         setActiveToolId(null);
         setIsHistoryOpen(false);
         setIsExportMenuOpen(false);
+        setIsRecentBackupOpen(false);
+        setPendingCloseAction(null);
       } else if (
         (modKey && e.key.toLowerCase() === 'k') ||
         (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA')
@@ -740,6 +1202,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href={`/${locale}`}
+            onClick={(e) => handleGuardedNavigate(e, `/${locale}`)}
             className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
             title={isZh ? '返回首页' : 'Home'}
           >
@@ -813,6 +1276,199 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
 
         {/* Right: Actions & Mode Switch */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Recent Files & Auto-Backup Recovery Popover Button */}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="studio-recent-backups-btn"
+              onClick={() => {
+                refreshStorageLists();
+                setIsRecentBackupOpen((prev) => !prev);
+                setIsExportMenuOpen(false);
+                setIsHistoryOpen(false);
+              }}
+              className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-all ${
+                autoBackupsList.length > 0
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                  : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-foreground))] hover:bg-[hsl(var(--color-muted))]'
+              }`}
+              title={isZh ? '最近文件与自动备份恢复' : 'Recent Files & Auto-Backup Recovery'}
+              aria-label={isZh ? '最近文件与自动备份恢复' : 'Recent Files & Auto-Backup Recovery'}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">{isZh ? '最近与备份' : 'Recent & Backups'}</span>
+              {(autoBackupsList.length > 0 || recentFilesList.length > 0) && (
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full text-white ${
+                    autoBackupsList.length > 0 ? 'bg-amber-500' : 'bg-[hsl(var(--color-primary))]'
+                  }`}
+                >
+                  {autoBackupsList.length + recentFilesList.length}
+                </span>
+              )}
+            </button>
+
+            {isRecentBackupOpen && (
+              <div
+                data-testid="studio-recent-backups-popover"
+                className="absolute right-0 top-10 w-80 max-h-[28rem] overflow-y-auto bg-[hsl(var(--color-card))] border border-[hsl(var(--color-border))] rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150"
+              >
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-[hsl(var(--color-border))]">
+                  <span className="text-xs font-bold text-[hsl(var(--color-foreground))] flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[hsl(var(--color-primary))]" />
+                    {isZh ? '最近文件与自动备份' : 'Recent Files & Auto-Backups'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsRecentBackupOpen(false)}
+                    className="p-1 rounded-md text-[hsl(var(--color-muted-foreground))] hover:bg-[hsl(var(--color-muted))]"
+                    aria-label="Close recent and backups popover"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Section 1: Recover Auto-Backups */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      {isZh ? '自动备份恢复' : 'Recover Auto-Backups'} ({autoBackupsList.length})
+                    </span>
+                    {autoBackupsList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAutoBackups}
+                        className="text-[10px] text-[hsl(var(--color-muted-foreground))] hover:text-red-500 flex items-center gap-0.5"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>{isZh ? '清空' : 'Clear'}</span>
+                      </button>
+                    )}
+                  </div>
+                  {autoBackupsList.length === 0 ? (
+                    <p className="text-[11px] text-[hsl(var(--color-muted-foreground))] py-2 px-2 rounded-lg bg-[hsl(var(--color-muted)/0.3)] text-center">
+                      {isZh ? '暂无未保存的自动备份文件' : 'No unsaved auto-backup files'}
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {autoBackupsList.map((backup) => (
+                        <div
+                          key={backup.id}
+                          className="p-2 rounded-xl border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 transition-colors flex items-center justify-between gap-2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleRecoverAutoBackup(backup.id)}
+                            className="flex-1 min-w-0 text-left"
+                          >
+                            <div className="text-xs font-semibold text-[hsl(var(--color-foreground))] truncate">
+                              {backup.name}
+                            </div>
+                            <div className="text-[10px] text-[hsl(var(--color-muted-foreground))] flex items-center gap-1.5 mt-0.5">
+                              <span>{formatFileSize(backup.modifiedSize)}</span>
+                              <span>•</span>
+                              <span>{formatDate(backup.updatedAt)}</span>
+                              <span>•</span>
+                              <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                +{backup.actionCount} {isZh ? '修改' : 'edit(s)'}
+                              </span>
+                            </div>
+                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleRecoverAutoBackup(backup.id)}
+                              className="px-2 py-1 rounded-md bg-amber-500 text-white text-[10px] font-semibold hover:bg-amber-600 transition-colors"
+                            >
+                              {isZh ? '恢复' : 'Recover'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDownloadAutoBackup(backup.id, e)}
+                              className="p-1 rounded-md text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-primary))] hover:bg-[hsl(var(--color-muted))]"
+                              title={isZh ? '直接保存备份文件' : 'Save backup to disk'}
+                              aria-label={`Save backup ${backup.name}`}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteAutoBackup(backup.id, e)}
+                              className="p-1 rounded-md text-[hsl(var(--color-muted-foreground))] hover:text-red-500 hover:bg-[hsl(var(--color-muted))]"
+                              title={isZh ? '删除此备份' : 'Delete backup'}
+                              aria-label={`Delete backup ${backup.name}`}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 2: Recent Files */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-semibold text-[hsl(var(--color-foreground))] flex items-center gap-1">
+                      <FolderOpen className="w-3.5 h-3.5 text-[hsl(var(--color-primary))]" />
+                      {isZh ? '最近打开的文件' : 'Recent Files'} ({recentFilesList.length})
+                    </span>
+                    {recentFilesList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearRecentStudioFiles}
+                        className="text-[10px] text-[hsl(var(--color-muted-foreground))] hover:text-red-500 flex items-center gap-0.5"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>{isZh ? '清空' : 'Clear'}</span>
+                      </button>
+                    )}
+                  </div>
+                  {recentFilesList.length === 0 ? (
+                    <p className="text-[11px] text-[hsl(var(--color-muted-foreground))] py-2 px-2 rounded-lg bg-[hsl(var(--color-muted)/0.3)] text-center">
+                      {isZh ? '暂无最近文件记录' : 'No recent files'}
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      {recentFilesList.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-2 rounded-xl hover:bg-[hsl(var(--color-muted)/0.6)] transition-colors flex items-center justify-between gap-2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRecentStudioFile(item)}
+                            className="flex-1 min-w-0 text-left"
+                          >
+                            <div className="text-xs font-medium text-[hsl(var(--color-foreground))] truncate flex items-center gap-1.5">
+                              <FileText className="w-3.5 h-3.5 text-[hsl(var(--color-primary))] shrink-0" />
+                              <span className="truncate">{item.name}</span>
+                            </div>
+                            <div className="text-[10px] text-[hsl(var(--color-muted-foreground))] flex items-center gap-1.5 mt-0.5">
+                              <span>{formatFileSize(item.size)}</span>
+                              <span>•</span>
+                              <span>{formatDate(item.processedAt)}</span>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemoveRecentStudioFile(item.id, item.name, e)}
+                            className="p-1 rounded-md text-[hsl(var(--color-muted-foreground))] hover:text-red-500 hover:bg-[hsl(var(--color-muted))]"
+                            aria-label={`Remove recent ${item.name}`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {file ? (
             <>
               <Button
@@ -928,6 +1584,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           ) : (
             <Link
               href={`/${locale}`}
+              onClick={(e) => handleGuardedNavigate(e, `/${locale}`)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[hsl(var(--color-border))] text-xs font-medium text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-foreground))] hover:bg-[hsl(var(--color-muted))] transition-all"
               title={isZh ? '切换到经典工具网格模式' : 'Classic Tool Grid View'}
             >
@@ -994,7 +1651,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 flex-1 min-w-0 mr-2">
             {documents.map((doc) => {
               const isActive = doc.id === activeDoc?.id;
-              const isModified = doc.historyStack.length > 0;
+              const isModified = isDocModified(doc);
               return (
                 <div
                   key={doc.id}
@@ -1014,6 +1671,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
                   <span className="truncate">{doc.name}</span>
                   {isModified && (
                     <span
+                      data-testid={`unsaved-indicator-${doc.name}`}
                       className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--color-primary))] shrink-0"
                       title={isZh ? '有尚未保存的修改' : 'Unsaved changes'}
                     />
@@ -1231,7 +1889,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
-            className="flex-1 flex flex-col items-center justify-center p-6 text-center"
+            className="flex-1 flex flex-col items-center justify-center p-6 text-center overflow-y-auto"
           >
             <input
               ref={fileInputRef}
@@ -1289,9 +1947,253 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
                 <span>{isZh ? '多标签快速切换' : 'Multi-Tab Document Switch'}</span>
               </div>
             </div>
+
+            {/* Recent Files & Recover Auto-Backup Lists on Welcome Screen */}
+            {(autoBackupsList.length > 0 || recentFilesList.length > 0) && (
+              <div className="max-w-3xl w-full mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                {/* Auto-Backup Recovery List */}
+                <div
+                  data-testid="studio-auto-backup-list"
+                  className="p-4 rounded-2xl border border-[hsl(var(--color-border))] bg-[hsl(var(--color-card)/0.7)] backdrop-blur-md shadow-sm flex flex-col"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-500" />
+                      <h3 className="text-xs font-bold text-[hsl(var(--color-foreground))]">
+                        {isZh ? '恢复自动备份文件' : 'Recover Auto-Backup Files'}
+                      </h3>
+                      {autoBackupsList.length > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                          {autoBackupsList.length}
+                        </span>
+                      )}
+                    </div>
+                    {autoBackupsList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAutoBackups}
+                        className="text-[11px] text-[hsl(var(--color-muted-foreground))] hover:text-red-500 flex items-center gap-1 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>{isZh ? '清空备份' : 'Clear All'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {autoBackupsList.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center py-6 text-xs text-[hsl(var(--color-muted-foreground))]">
+                      {isZh ? '暂无待恢复的自动备份文件' : 'No auto-backup files to recover'}
+                    </div>
+                  ) : (
+                    <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {autoBackupsList.map((backup) => (
+                        <li
+                          key={backup.id}
+                          className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 transition-all flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold text-[hsl(var(--color-foreground))] truncate">
+                              {backup.name}
+                            </div>
+                            <div className="text-[11px] text-[hsl(var(--color-muted-foreground))] flex items-center gap-1.5 mt-0.5">
+                              <span>{formatFileSize(backup.modifiedSize)}</span>
+                              <span>•</span>
+                              <span>{formatDate(backup.updatedAt)}</span>
+                              <span>•</span>
+                              <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                +{backup.actionCount} {isZh ? '项修改' : 'edit(s)'} ({backup.lastAction})
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              data-testid={`recover-backup-${backup.id}`}
+                              onClick={() => handleRecoverAutoBackup(backup.id)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition-colors"
+                            >
+                              {isZh ? '恢复' : 'Recover'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDownloadAutoBackup(backup.id, e)}
+                              className="p-1.5 rounded-lg text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-primary))] hover:bg-[hsl(var(--color-muted))] transition-colors"
+                              title={isZh ? '直接保存备份' : 'Save backup'}
+                              aria-label={`Save backup ${backup.name}`}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteAutoBackup(backup.id, e)}
+                              className="p-1.5 rounded-lg text-[hsl(var(--color-muted-foreground))] hover:text-red-500 hover:bg-[hsl(var(--color-muted))] transition-colors"
+                              title={isZh ? '删除备份' : 'Delete backup'}
+                              aria-label={`Delete backup ${backup.name}`}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Recent Files List */}
+                <div
+                  data-testid="studio-recent-files-list"
+                  className="p-4 rounded-2xl border border-[hsl(var(--color-border))] bg-[hsl(var(--color-card)/0.7)] backdrop-blur-md shadow-sm flex flex-col"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-[hsl(var(--color-primary))]" />
+                      <h3 className="text-xs font-bold text-[hsl(var(--color-foreground))]">
+                        {isZh ? '最近打开的文件' : 'Recent Files'}
+                      </h3>
+                      {recentFilesList.length > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[hsl(var(--color-primary)/0.15)] text-[hsl(var(--color-primary))]">
+                          {recentFilesList.length}
+                        </span>
+                      )}
+                    </div>
+                    {recentFilesList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearRecentStudioFiles}
+                        className="text-[11px] text-[hsl(var(--color-muted-foreground))] hover:text-red-500 flex items-center gap-1 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>{isZh ? '清空记录' : 'Clear All'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {recentFilesList.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center py-6 text-xs text-[hsl(var(--color-muted-foreground))]">
+                      {isZh ? '暂无最近打开的文件' : 'No recent files'}
+                    </div>
+                  ) : (
+                    <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {recentFilesList.map((recent) => (
+                        <li
+                          key={recent.id}
+                          className="p-2 rounded-xl border border-transparent hover:border-[hsl(var(--color-border))] hover:bg-[hsl(var(--color-muted)/0.5)] transition-all flex items-center justify-between gap-2"
+                        >
+                          <button
+                            type="button"
+                            data-testid={`open-recent-${recent.name}`}
+                            onClick={() => handleOpenRecentStudioFile(recent)}
+                            className="flex-1 min-w-0 text-left"
+                          >
+                            <div className="text-xs font-medium text-[hsl(var(--color-foreground))] truncate flex items-center gap-1.5">
+                              <FileText className="w-3.5 h-3.5 text-[hsl(var(--color-primary))] shrink-0" />
+                              <span className="truncate">{recent.name}</span>
+                            </div>
+                            <div className="text-[11px] text-[hsl(var(--color-muted-foreground))] flex items-center gap-1.5 mt-0.5">
+                              <span>{formatFileSize(recent.size)}</span>
+                              <span>•</span>
+                              <span>{formatDate(recent.processedAt)}</span>
+                              {recent.toolName && (
+                                <>
+                                  <span>•</span>
+                                  <span>{recent.toolName}</span>
+                                </>
+                              )}
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemoveRecentStudioFile(recent.id, recent.name, e)}
+                            className="p-1.5 rounded-lg text-[hsl(var(--color-muted-foreground))] hover:text-red-500 hover:bg-[hsl(var(--color-muted))] transition-colors shrink-0"
+                            aria-label={`Remove recent ${recent.name}`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Unsaved Changes Confirmation Modal */}
+      {pendingCloseAction && (
+        <div
+          data-testid="unsaved-changes-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unsaved-changes-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-[hsl(var(--color-border))] bg-[hsl(var(--color-card))] p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-500 shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3
+                  id="unsaved-changes-title"
+                  className="text-base font-bold text-[hsl(var(--color-foreground))]"
+                >
+                  {isZh ? '是否先保存您的修改？' : 'Save Changes Before Closing?'}
+                </h3>
+                <p className="mt-1.5 text-xs text-[hsl(var(--color-muted-foreground))] leading-relaxed">
+                  {pendingCloseAction.type === 'close-doc'
+                    ? isZh
+                      ? `文档「${pendingCloseAction.docName}」有未保存的更改。在关闭前是否要先保存您的修改？`
+                      : `Document "${pendingCloseAction.docName}" has unsaved changes. Would you like to save your changes before closing?`
+                    : isZh
+                    ? `当前有 ${documents.filter(isDocModified).length} 个已修改的文档尚未保存。在离开前是否要先保存您的修改？`
+                    : `You have ${documents.filter(isDocModified).length} modified document(s) with unsaved changes. Would you like to save your changes first?`}
+                </p>
+                <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    {isZh
+                      ? '已为您自动备份修改内容，以防意外关闭丢失。'
+                      : 'Modified files are also auto-backed up in case of unexpected closure.'}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="unsaved-modal-cancel"
+                onClick={() => setPendingCloseAction(null)}
+                className="text-xs"
+              >
+                {isZh ? '取消' : 'Cancel'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="unsaved-modal-discard"
+                onClick={handleConfirmDiscardAndClose}
+                className="text-xs text-red-600 hover:text-red-700 border-red-500/30 hover:bg-red-500/10"
+              >
+                {isZh ? '不保存直接关闭' : "Don't Save"}
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                data-testid="unsaved-modal-save"
+                onClick={handleConfirmSaveAndClose}
+                className="text-xs gap-1.5"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isZh ? '保存并关闭' : 'Save & Close'}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tool Selection Modal for Non-PDF Files */}
       <ToolSelectionModal

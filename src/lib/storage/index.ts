@@ -5,3 +5,4 @@
 
 export * from './recent-files';
 export * from './project-db';
+export * from './auto-backup';
