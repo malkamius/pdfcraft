@@ -73,7 +73,7 @@ export function CompressPDFTool({ className = '' }: CompressPDFToolProps) {
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        await page.render({ canvas: null, canvasContext: ctx, viewport }).promise;
         const originalUrl = canvas.toDataURL('image/jpeg', 1.0);
         setPdfPageImage(originalUrl);
         

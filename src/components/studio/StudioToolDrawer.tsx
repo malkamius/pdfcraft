@@ -618,14 +618,24 @@ export const StudioToolDrawer: React.FC<StudioToolDrawerProps> = ({
           backgroundColor: 'white',
         };
         break;
-      case 'ocr-pdf':
+      case 'ocr-pdf': {
+        const lang = dynamicOptions.language || ocrLanguage;
+        const fmt = dynamicOptions.outputFormat || ocrOutputFormat || 'searchable-pdf';
+        const pageScope = dynamicOptions.pageScope || 'all';
+        const customPages = dynamicOptions.customPages || '';
+        const pages = pageScope === 'custom' && customPages ? parsePageNumbers(customPages) : [];
+        const deskew = dynamicOptions.deskew ?? ocrEnhanceContrast;
+        const preserveLayout = dynamicOptions.preserveLayout ?? true;
         options = {
-          languages: ocrLanguage === 'chi_sim' ? ['chi_sim', 'eng'] : [ocrLanguage],
-          outputFormat: ocrOutputFormat,
-          preserveLayout: true,
-          enhanceContrast: ocrEnhanceContrast,
+          languages: lang === 'chi_sim' ? ['chi_sim', 'eng'] : [lang],
+          outputFormat: fmt,
+          pages,
+          preserveLayout,
+          enhanceContrast: deskew,
+          ...dynamicOptions,
         };
         break;
+      }
       case 'merge-pdf':
       case 'alternate-merge':
       case 'image-to-pdf':

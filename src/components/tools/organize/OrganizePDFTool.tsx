@@ -88,6 +88,7 @@ export function OrganizePDFTool({ className = '' }: OrganizePDFToolProps) {
           canvas.width = viewport.width;
 
           await page.render({
+            canvas: null,
             canvasContext: context,
             viewport: viewport,
           }).promise;

@@ -314,6 +314,7 @@ export class PDFToSVGProcessor extends BasePDFProcessor {
 
         // Render PDF page to canvas
         await page.render({
+            canvas: null,
             canvasContext: ctx,
             viewport: viewport,
         }).promise;

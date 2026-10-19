@@ -116,6 +116,7 @@ export class PDFToTIFFProcessor extends BasePDFProcessor {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         await page.render({
+          canvas: null,
           canvasContext: ctx,
           viewport: viewport,
         }).promise;

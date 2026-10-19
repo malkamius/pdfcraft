@@ -114,6 +114,13 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
   const [isApplying, setIsApplying] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
+  const [isOcrTextOpen, setIsOcrTextOpen] = useState<boolean>(false);
+  const [ocrExportFormat, setOcrExportFormat] = useState<string>('searchable-pdf');
+  const [ocrCopied, setOcrCopied] = useState<boolean>(false);
+
+  const ocrMeta = useMemo(() => {
+    return (currentBlob as any)?.__metadata || null;
+  }, [currentBlob]);
 
   // Feedback notifications
   const [notification, setNotification] = useState<{
@@ -192,8 +199,32 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
         redoStack: [],
       }));
 
-      setDocuments((prev) => [...prev, ...newDocs]);
-      setActiveDocId(newDocs[0].id);
+      setDocuments((prev) => {
+        const toAdd: StudioDocument[] = [];
+        let activeIdToSet: string | null = null;
+
+        for (const newDoc of newDocs) {
+          const existing = prev.find(
+            (d) => d.name === newDoc.name && d.file.size === newDoc.file.size
+          );
+          if (existing) {
+            if (!activeIdToSet) activeIdToSet = existing.id;
+          } else {
+            toAdd.push(newDoc);
+            if (!activeIdToSet) activeIdToSet = newDoc.id;
+          }
+        }
+
+        if (activeIdToSet) {
+          setActiveDocId(activeIdToSet);
+        }
+
+        if (toAdd.length === 0) {
+          return prev;
+        }
+
+        return [...prev, ...toAdd];
+      });
       setActiveToolId(null);
       notify(
         'success',
@@ -291,6 +322,16 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
 
         setActiveToolId(null); // Close drawer
         addStudioRecentTool(toolId);
+
+        const newMeta = (newBlob as any)?.__metadata;
+        if (newMeta) {
+          const fmt = newMeta.requestedFormat || options.outputFormat || 'searchable-pdf';
+          setOcrExportFormat(fmt);
+          setIsOcrTextOpen(fmt === 'text' || fmt === 'markdown' || fmt === 'json');
+        } else {
+          setIsOcrTextOpen(false);
+        }
+
         notify(
           'success',
           isZh
@@ -307,6 +348,57 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
       }
     },
     [currentBlob, file, activeDoc, notify, validLocale, isZh]
+  );
+
+  // Save/export in-memory OCR result in the selected format when user likes the results
+  const handleSaveOcrResult = useCallback(
+    async (formatOverride?: string) => {
+      if (!currentBlob || !file) return;
+      const fmt = formatOverride || ocrExportFormat || 'searchable-pdf';
+      const baseName = file.name.replace(/\.pdf$/i, '');
+
+      try {
+        if (fmt === 'searchable-pdf') {
+          const filename = `${baseName}_searchable.pdf`;
+          const isDownloaded = await saveBlobFile(currentBlob, filename);
+          if (isDownloaded) {
+            notify('success', isZh ? `已保存可搜索 PDF「${filename}」` : `Saved searchable PDF "${filename}"`);
+          }
+          return;
+        }
+
+        if (ocrMeta) {
+          let targetBlob: Blob | null = null;
+          let filename = `${baseName}_ocr.txt`;
+
+          if (fmt === 'text' && typeof ocrMeta.rawText === 'string') {
+            targetBlob = new Blob([ocrMeta.rawText], { type: 'text/plain;charset=utf-8' });
+            filename = `${baseName}_ocr.txt`;
+          } else if (fmt === 'markdown' && typeof ocrMeta.markdownText === 'string') {
+            targetBlob = new Blob([ocrMeta.markdownText], { type: 'text/markdown;charset=utf-8' });
+            filename = `${baseName}_ocr.md`;
+          } else if (fmt === 'json' && typeof ocrMeta.jsonText === 'string') {
+            targetBlob = new Blob([ocrMeta.jsonText], { type: 'application/json;charset=utf-8' });
+            filename = `${baseName}_ocr.json`;
+          } else if (fmt === 'docx' && Array.isArray(ocrMeta.pagesData)) {
+            const { generateDocxOutput } = await import('@/lib/pdf/processors/ocr');
+            targetBlob = await generateDocxOutput(ocrMeta.pagesData, file.name);
+            filename = `${baseName}_ocr.docx`;
+          }
+
+          if (targetBlob) {
+            const isDownloaded = await saveBlobFile(targetBlob, filename);
+            if (isDownloaded) {
+              notify('success', isZh ? `已导出 OCR 结果「${filename}」` : `Exported OCR result "${filename}"`);
+            }
+            return;
+          }
+        }
+      } catch (err: any) {
+        notify('error', err?.message || (isZh ? '保存导出失败' : 'Failed to save and export OCR result'));
+      }
+    },
+    [currentBlob, file, ocrExportFormat, ocrMeta, notify, isZh]
   );
 
   // Handle export/convert operation without altering central PDF viewer
@@ -882,27 +974,139 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
               onQuickApply={(toolId) => handleApplyTool(toolId, {})}
             />
 
-            {/* Center: Single Seamless PDF Viewer */}
-            <main className="flex-1 relative bg-zinc-900/10 dark:bg-black/40 overflow-hidden">
-              <iframe
-                ref={iframeRef}
-                src={withBasePath(`/pdfjs-viewer/viewer.html?file=${encodeURIComponent(pdfUrl)}`)}
-                className="w-full h-full border-0 absolute inset-0"
-                title={file.name}
-              />
+            {/* Center: Single Seamless PDF Viewer + In-Memory OCR Results Bar */}
+            <main className="flex-1 flex flex-col relative bg-zinc-900/10 dark:bg-black/40 overflow-hidden">
+              {ocrMeta && (
+                <div
+                  data-testid="studio-ocr-memory-bar"
+                  className="flex-shrink-0 border-b border-[hsl(var(--color-border))] bg-[hsl(var(--color-card)/0.95)] backdrop-blur-md px-3 py-2 flex flex-wrap items-center justify-between gap-2 z-20"
+                >
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {isZh ? 'OCR 已在内存中打开' : 'OCR Open in Memory'}
+                    </span>
+                    <span className="text-[11px] text-[hsl(var(--color-muted-foreground))]">
+                      {ocrMeta.totalWords ?? 0} {isZh ? '词' : 'words'} • {ocrMeta.avgConfidence ?? 92}% {isZh ? '置信度' : 'confidence'}
+                    </span>
+                  </div>
 
-              {/* Processing Overlay Feedback */}
-              {isApplying && (
-                <div className="absolute inset-0 bg-background/50 backdrop-blur-xs z-30 flex flex-col items-center justify-center animate-in fade-in duration-200">
-                  <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-[hsl(var(--color-card)/0.95)] border border-[hsl(var(--color-border))] shadow-2xl">
-                    <Loader2 className="w-8 h-8 text-[hsl(var(--color-primary))] animate-spin" />
-                    <div className="text-center">
-                      <p className="text-xs font-bold text-[hsl(var(--color-foreground))]">{isZh ? '正在就地处理文档...' : 'Processing document in-place...'}</p>
-                      <p className="text-[10px] text-[hsl(var(--color-muted-foreground))] mt-0.5">{isZh ? '100% 浏览器内存安全运行，零网络上传' : '100% Client-side safe, zero network upload'}</p>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsOcrTextOpen((prev) => !prev)}
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-all ${
+                        isOcrTextOpen
+                          ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary)/0.12)] text-[hsl(var(--color-primary))] font-semibold'
+                          : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-foreground))] hover:bg-[hsl(var(--color-muted))]'
+                      }`}
+                    >
+                      {isOcrTextOpen
+                        ? isZh
+                          ? '查看可搜索 PDF'
+                          : 'View Searchable PDF'
+                        : isZh
+                        ? '预览识别文本'
+                        : 'Preview Extracted Text'}
+                    </button>
+
+                    <select
+                      aria-label={isZh ? 'OCR 导出格式' : 'OCR Export Format'}
+                      value={ocrExportFormat}
+                      onChange={(e) => setOcrExportFormat(e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-xs text-[hsl(var(--color-foreground))]"
+                    >
+                      <option value="searchable-pdf">{isZh ? '可搜索 PDF (.pdf)' : 'Searchable PDF (.pdf)'}</option>
+                      <option value="docx">{isZh ? 'Word 文档 (.docx)' : 'Word (.docx)'}</option>
+                      <option value="text">{isZh ? '纯文本 (.txt)' : 'Plain Text (.txt)'}</option>
+                      <option value="markdown">{isZh ? 'Markdown (.md)' : 'Markdown (.md)'}</option>
+                      <option value="json">{isZh ? 'JSON 数据 (.json)' : 'JSON Data (.json)'}</option>
+                    </select>
+
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleSaveOcrResult()}
+                      className="h-7 px-2.5 text-xs gap-1"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>{isZh ? '满意并保存导出' : 'Save & Export OCR'}</span>
+                    </Button>
                   </div>
                 </div>
               )}
+
+              <div className="flex-1 relative overflow-hidden">
+                <iframe
+                  ref={iframeRef}
+                  src={withBasePath(`/pdfjs-viewer/viewer.html?file=${encodeURIComponent(pdfUrl)}`)}
+                  className="w-full h-full border-0 absolute inset-0"
+                  title={file.name}
+                />
+
+                {/* In-Memory Extracted Text / Markdown / JSON Preview Overlay */}
+                {ocrMeta && isOcrTextOpen && (
+                  <div className="absolute inset-0 bg-[hsl(var(--color-background)/0.96)] backdrop-blur-md z-10 flex flex-col p-4 overflow-hidden animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-[hsl(var(--color-border))]">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-[hsl(var(--color-primary))]" />
+                        <span className="text-xs font-bold text-[hsl(var(--color-foreground))]">
+                          {isZh ? '内存 OCR 文本预览 (未保存至磁盘)' : 'In-Memory OCR Text Preview (Not saved to disk yet)'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const textToCopy =
+                              ocrExportFormat === 'markdown'
+                                ? ocrMeta.markdownText
+                                : ocrExportFormat === 'json'
+                                ? ocrMeta.jsonText
+                                : ocrMeta.rawText;
+                            if (!textToCopy) return;
+                            try {
+                              await navigator.clipboard.writeText(textToCopy);
+                              setOcrCopied(true);
+                              setTimeout(() => setOcrCopied(false), 2000);
+                            } catch {}
+                          }}
+                          className="px-2.5 py-1 rounded-lg border border-[hsl(var(--color-border))] bg-[hsl(var(--color-card))] hover:bg-[hsl(var(--color-muted))] text-xs font-medium text-[hsl(var(--color-foreground))]"
+                        >
+                          {ocrCopied ? (isZh ? '已复制 ✓' : 'Copied ✓') : isZh ? '复制文本' : 'Copy Text'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsOcrTextOpen(false)}
+                          className="px-2.5 py-1 rounded-lg border border-[hsl(var(--color-border))] hover:bg-[hsl(var(--color-muted))] text-xs text-[hsl(var(--color-muted-foreground))]"
+                        >
+                          {isZh ? '返回 PDF 预览' : 'Back to PDF View'}
+                        </button>
+                      </div>
+                    </div>
+                    <pre className="flex-1 p-4 rounded-xl border border-[hsl(var(--color-border))] bg-[hsl(var(--color-muted)/0.3)] overflow-auto text-xs font-mono text-[hsl(var(--color-foreground))] whitespace-pre-wrap leading-relaxed select-text">
+                      {ocrExportFormat === 'markdown'
+                        ? ocrMeta.markdownText || ocrMeta.rawText
+                        : ocrExportFormat === 'json'
+                        ? ocrMeta.jsonText || ocrMeta.rawText
+                        : ocrMeta.rawText || (isZh ? '(未检测到文本)' : '(No text detected)')}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Processing Overlay Feedback */}
+                {isApplying && (
+                  <div className="absolute inset-0 bg-background/50 backdrop-blur-xs z-30 flex flex-col items-center justify-center animate-in fade-in duration-200">
+                    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-[hsl(var(--color-card)/0.95)] border border-[hsl(var(--color-border))] shadow-2xl">
+                      <Loader2 className="w-8 h-8 text-[hsl(var(--color-primary))] animate-spin" />
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-[hsl(var(--color-foreground))]">{isZh ? '正在就地处理文档...' : 'Processing document in-place...'}</p>
+                        <p className="text-[10px] text-[hsl(var(--color-muted-foreground))] mt-0.5">{isZh ? '100% 浏览器内存安全运行，零网络上传' : '100% Client-side safe, zero network upload'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </main>
 
             {/* Right: Context Tool Parameter Drawer */}

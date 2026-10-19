@@ -344,7 +344,7 @@ export class WatermarkProcessor extends BasePDFProcessor {
               break;
             }
 
-            await page.render({ canvasContext: ctx, viewport }).promise;
+            await page.render({ canvas: null, canvasContext: ctx, viewport }).promise;
             const jpegBytes = await new Promise<ArrayBuffer | null>((resolve) => {
               canvas.toBlob(
                 (blob) => {

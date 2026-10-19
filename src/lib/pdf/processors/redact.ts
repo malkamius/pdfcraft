@@ -589,6 +589,7 @@ export async function redactPDF(
 
     // Render original page
     await pageProxy.render({
+      canvas: null,
       canvasContext: ctx,
       viewport,
       intent: 'display',

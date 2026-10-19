@@ -80,6 +80,7 @@ export function RotateCustomTool({ className = '' }: RotateCustomToolProps) {
                     canvas.width = viewport.width;
 
                     await page.render({
+                        canvas: null,
                         canvasContext: context,
                         viewport: viewport,
                     }).promise;

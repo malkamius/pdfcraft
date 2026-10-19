@@ -9,6 +9,7 @@ import { DownloadButton } from '../DownloadButton';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ocrPDF, type OCROptions, type OCRLanguage, OCR_LANGUAGE_NAMES } from '@/lib/pdf/processors/ocr';
+import { withBasePath } from '@/lib/utils/path';
 import { Select } from '@/components/ui/FormField';
 import type { UploadedFile, ProcessOutput } from '@/types/pdf';
 import { 
@@ -49,8 +50,25 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const [result, setResult] = useState<Blob | null>(null);
+  const [resultPdfUrl, setResultPdfUrl] = useState<string | null>(null);
+  const [resultFormat, setResultFormat] = useState<OCROptions['outputFormat']>('searchable-pdf');
+  const [resultFilename, setResultFilename] = useState('');
   const [textPreview, setTextPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!result || resultFormat !== 'searchable-pdf' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+      setResultPdfUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(result);
+    setResultPdfUrl(url);
+    return () => {
+      if (typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [result, resultFormat]);
   
   // Enhanced metrics & interaction state
   const [stats, setStats] = useState<{
@@ -190,6 +208,8 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
         status: 'pending' as const,
       };
       setFile(uploadedFile);
+      setStatus('idle');
+      setStats(null);
       setError(null);
       setResult(null);
       setTextPreview(null);
@@ -290,6 +310,8 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
       if (output.success && output.result) {
         const blob = output.result as Blob;
         setResult(blob);
+        setResultFormat(outputFormat);
+        setResultFilename(output.filename || 'ocr.pdf');
         setStats({
           pageCount: output.metadata?.pageCount as number | undefined,
           totalWords: output.metadata?.totalWords as number | undefined,
@@ -430,7 +452,7 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
       )}
 
       {/* Primary Workspace */}
-      {file && status !== 'complete' && (
+      {file && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           
           {/* LEFT: OCR Options */}
@@ -455,6 +477,7 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
                       <button
                         key={lang}
                         type="button"
+                        aria-pressed={languages.includes(lang)}
                         onClick={() => toggleLanguage(lang)}
                         disabled={isProcessing}
                         className={`
@@ -471,53 +494,91 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-4">
                   {/* Format Output */}
                   <div>
-                    <label className="block text-[11px] font-bold text-[hsl(var(--color-muted-foreground))] uppercase tracking-wider mb-2">
+                    <label htmlFor="ocr-output-format" className="block text-[11px] font-bold text-[hsl(var(--color-muted-foreground))] uppercase tracking-wider mb-2">
                       {t('ocr.outputFormat')}
                     </label>
-                    <Select
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                      {[
+                        { id: 'searchable-pdf', label: t('ocr.formatSearchablePdf') || 'Searchable PDF', ext: '.pdf' },
+                        { id: 'docx', label: t('ocr.formatDocx') || 'Word (.docx)', ext: '.docx' },
+                        { id: 'text', label: t('ocr.formatText') || 'Plain Text', ext: '.txt' },
+                        { id: 'markdown', label: t('ocr.formatMarkdown') || 'Markdown', ext: '.md' },
+                        { id: 'json', label: t('ocr.formatJson') || 'JSON Data', ext: '.json' },
+                      ].map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          id={`ocr-format-${f.id}`}
+                          aria-pressed={outputFormat === f.id}
+                          onClick={() => setOutputFormat(f.id as OCROptions['outputFormat'])}
+                          disabled={isProcessing}
+                          className={`
+                            p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer
+                            ${outputFormat === f.id
+                              ? 'bg-[hsl(var(--color-primary))] text-white border-[hsl(var(--color-primary))] shadow-sm font-bold ring-2 ring-[hsl(var(--color-primary)/0.3)]'
+                              : 'bg-white/50 dark:bg-zinc-800/50 text-[hsl(var(--color-foreground))] border-[hsl(var(--color-border))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.4)]'
+                            }
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                          `}
+                        >
+                          <span className="text-xs font-bold leading-tight">{f.label}</span>
+                          <span className={`text-[10px] font-mono ${outputFormat === f.id ? 'text-white/80' : 'text-[hsl(var(--color-muted-foreground))]'}`}>{f.ext}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {/* Hidden accessible select */}
+                    <select
+                      id="ocr-output-format"
                       value={outputFormat}
                       onChange={(e) => setOutputFormat(e.target.value as OCROptions['outputFormat'])}
                       disabled={isProcessing}
+                      className="sr-only"
+                      aria-label={t('ocr.outputFormat')}
                     >
                       <option value="searchable-pdf">{t('ocr.formatSearchablePdf')}</option>
+                      <option value="docx">{t('ocr.formatDocx') || 'Word (.docx)'}</option>
                       <option value="text">{t('ocr.formatText')}</option>
                       <option value="markdown">{t('ocr.formatMarkdown')}</option>
                       <option value="json">{t('ocr.formatJson')}</option>
-                    </Select>
+                    </select>
                   </div>
 
-                  {/* Resolution scale */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-[hsl(var(--color-muted-foreground))] uppercase tracking-wider mb-2">
-                      {t('ocr.accuracyTitle')}
-                    </label>
-                    <Select
-                      value={scale}
-                      onChange={(e) => setScale(parseFloat(e.target.value))}
-                      disabled={isProcessing}
-                    >
-                      <option value="1">{t('ocr.accuracySd')}</option>
-                      <option value="2">{t('ocr.accuracyHd')}</option>
-                      <option value="3">{t('ocr.accuracyUd')}</option>
-                    </Select>
-                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Resolution scale */}
+                    <div>
+                      <label htmlFor="ocr-resolution" className="block text-[11px] font-bold text-[hsl(var(--color-muted-foreground))] uppercase tracking-wider mb-2">
+                        {t('ocr.accuracyTitle')}
+                      </label>
+                      <Select
+                        id="ocr-resolution"
+                        value={scale}
+                        onChange={(e) => setScale(parseFloat(e.target.value))}
+                        disabled={isProcessing}
+                      >
+                        <option value="1">{t('ocr.accuracySd')}</option>
+                        <option value="2">{t('ocr.accuracyHd')}</option>
+                        <option value="3">{t('ocr.accuracyUd')}</option>
+                      </Select>
+                    </div>
 
-                  {/* Range */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-[hsl(var(--color-muted-foreground))] uppercase tracking-wider mb-2">
-                      {t('ocr.specifyPages')}
-                    </label>
-                    <input
-                      type="text"
-                      value={pageRange}
-                      onChange={(e) => setPageRange(e.target.value)}
-                      placeholder={t('ocr.pagesPlaceholder')}
-                      disabled={isProcessing}
-                      className="w-full px-3 py-2 rounded-xl border border-[hsl(var(--color-border))] bg-white dark:bg-zinc-800 text-xs focus:ring-1 focus:ring-[hsl(var(--color-primary))]"
-                    />
+                    {/* Range */}
+                    <div>
+                      <label htmlFor="ocr-pages" className="block text-[11px] font-bold text-[hsl(var(--color-muted-foreground))] uppercase tracking-wider mb-2">
+                        {t('ocr.specifyPages')}
+                      </label>
+                      <input
+                        id="ocr-pages"
+                        type="text"
+                        value={pageRange}
+                        onChange={(e) => setPageRange(e.target.value)}
+                        placeholder={t('ocr.pagesPlaceholder')}
+                        disabled={isProcessing}
+                        className="w-full px-3 py-2 rounded-xl border border-[hsl(var(--color-border))] bg-white dark:bg-zinc-800 text-xs focus:ring-1 focus:ring-[hsl(var(--color-primary))]"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -537,6 +598,7 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
                   <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                     <input
                       type="checkbox"
+                      aria-label={t('ocr.enhanceContrast')}
                       checked={enhanceContrast}
                       onChange={(e) => setEnhanceContrast(e.target.checked)}
                       disabled={isProcessing}
@@ -621,7 +683,7 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
           <div className="space-y-2 max-w-sm mx-auto">
             <h3 className="text-base font-extrabold text-[hsl(var(--color-foreground))]">{t('ocr.successTitle')}</h3>
             <p className="text-xs text-[hsl(var(--color-muted-foreground))]">
-              {outputFormat === 'searchable-pdf' 
+              {resultFormat === 'searchable-pdf'
                 ? t('ocr.successSearchablePdf') 
                 : t('ocr.successText')
               }
@@ -654,16 +716,14 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
           <div className="flex flex-wrap gap-3 justify-center max-w-lg mx-auto">
             <DownloadButton
               file={result}
-              filename={`${file?.file.name.replace(/\.(pdf|png|jpe?g|webp|bmp|tiff?)$/i, '')}_ocr.${
-                outputFormat === 'text' ? 'txt' : outputFormat === 'markdown' ? 'md' : outputFormat === 'json' ? 'json' : 'pdf'
-              }`}
+              filename={resultFilename}
               variant="primary"
               size="lg"
               className="flex-1 font-bold shadow-lg min-w-[140px]"
               showFileSize
             />
 
-            {outputFormat === 'searchable-pdf' && (
+            {resultFormat === 'searchable-pdf' && (
               <Button
                 variant="secondary"
                 size="lg"
@@ -690,6 +750,30 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
         </Card>
       )}
 
+      {/* In-Memory Searchable PDF Viewer Preview */}
+      {status === 'complete' && resultFormat === 'searchable-pdf' && resultPdfUrl && (
+        <Card variant="outlined" size="lg" className="rounded-3xl shadow-sm space-y-3">
+          <div className="flex items-center justify-between border-b border-[hsl(var(--color-border))] pb-3">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-[hsl(var(--color-primary))]" />
+              <h3 className="text-sm font-bold text-[hsl(var(--color-foreground))]">
+                Searchable PDF Preview (In Memory)
+              </h3>
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 uppercase">
+                In Memory
+              </span>
+            </div>
+          </div>
+          <div className="w-full h-[540px] rounded-2xl overflow-hidden border border-[hsl(var(--color-border))] bg-zinc-900/10">
+            <iframe
+              src={withBasePath(`/pdfjs-viewer/viewer.html?file=${encodeURIComponent(resultPdfUrl)}`)}
+              className="w-full h-full border-0"
+              title="In-Memory OCR PDF Preview"
+            />
+          </div>
+        </Card>
+      )}
+
       {/* Pure text/JSON preview box */}
       {textPreview && (
         <Card variant="outlined" size="lg" className="rounded-3xl shadow-sm space-y-3">
@@ -700,7 +784,7 @@ export function OCRPDFTool({ className = '' }: OCRPDFToolProps) {
                 {t('ocr.previewTitle')}
               </h3>
               <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 uppercase">
-                {outputFormat}
+                {resultFormat}
               </span>
             </div>
 

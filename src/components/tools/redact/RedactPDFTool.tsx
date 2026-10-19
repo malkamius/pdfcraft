@@ -426,6 +426,7 @@ export function RedactPDFTool({ className = '' }: RedactPDFToolProps) {
         const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
 
         const renderTask = page.render({
+          canvas: null,
           canvasContext: ctx,
           viewport,
           transform: transform || undefined,

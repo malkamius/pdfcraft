@@ -79,6 +79,7 @@ export function WorkflowPreview({ nodes, edges, inputFiles, isVisible, onToggle 
                             canvas.width = viewport.width;
 
                             await page.render({
+                                canvas: null,
                                 canvasContext: context,
                                 viewport: viewport,
                             }).promise;

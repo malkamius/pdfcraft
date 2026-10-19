@@ -123,15 +123,16 @@ export function OptimizeRepairToolOptions({
                   <button
                     key={l.id}
                     type="button"
+                    aria-pressed={level === l.id}
                     onClick={() => onChange('level', l.id)}
-                    className={`flex flex-col items-center py-2 px-1 text-xs rounded-lg border ${
+                    className={`flex flex-col items-center py-2 px-1 text-xs rounded-lg border transition-all ${
                       level === l.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     <span>{l.label}</span>
-                    <span className="text-[10px] text-muted-foreground">{l.desc}</span>
+                    <span className={`text-[10px] ${level === l.id ? 'text-white/80' : 'text-muted-foreground'}`}>{l.desc}</span>
                   </button>
                 ))}
               </div>
@@ -216,11 +217,12 @@ export function OptimizeRepairToolOptions({
                   <button
                     key={a.id}
                     type="button"
+                    aria-pressed={layerAction === a.id}
                     onClick={() => onChange('layerAction', a.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       layerAction === a.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {a.label}
@@ -328,11 +330,12 @@ export function OptimizeRepairToolOptions({
                   <button
                     key={a.id}
                     type="button"
+                    aria-pressed={action === a.id}
                     onClick={() => onChange('action', a.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       action === a.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {a.label}
@@ -367,11 +370,12 @@ export function OptimizeRepairToolOptions({
                   <button
                     key={k.id}
                     type="button"
+                    aria-pressed={inkType === k.id}
                     onClick={() => onChange('inkType', k.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       inkType === k.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {k.label}

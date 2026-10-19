@@ -189,6 +189,7 @@ export function WatermarkTool({ className = '' }: WatermarkToolProps) {
           }
         }
         renderTaskRef.current = page.render({
+          canvas: null,
           canvasContext: ctx,
           viewport,
         });

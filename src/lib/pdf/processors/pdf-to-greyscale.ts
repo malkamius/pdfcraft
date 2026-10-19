@@ -205,6 +205,7 @@ export class PDFToGreyscaleProcessor extends BasePDFProcessor {
 
     // Render PDF page to canvas
     await page.render({
+      canvas: null,
       canvasContext: ctx,
       viewport: viewport,
     }).promise;

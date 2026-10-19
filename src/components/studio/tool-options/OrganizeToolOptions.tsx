@@ -61,15 +61,16 @@ export function OrganizeToolOptions({
                 <button
                   key={m.id}
                   type="button"
+                  aria-pressed={splitMode === m.id}
                   onClick={() => onChange('splitMode', m.id)}
                   className={`flex flex-col items-start p-2.5 rounded-lg border text-left text-xs transition-colors ${
                     splitMode === m.id
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
-                      : 'border-border/60 hover:bg-muted/50 text-foreground'
+                      ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-medium shadow-xs'
+                      : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                   }`}
                 >
                   <span className="font-semibold">{m.label}</span>
-                  <span className="text-[10px] text-muted-foreground">{m.desc}</span>
+                  <span className={`text-[10px] ${splitMode === m.id ? 'text-white/80' : 'text-muted-foreground'}`}>{m.desc}</span>
                 </button>
               ))}
             </div>
@@ -121,11 +122,12 @@ export function OrganizeToolOptions({
                     <button
                       key={o.id}
                       type="button"
+                      aria-pressed={evenOddMode === o.id}
                       onClick={() => onChange('evenOddMode', o.id)}
-                      className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                      className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                         evenOddMode === o.id
-                          ? 'border-primary bg-primary/10 text-primary font-medium'
-                          : 'border-border/60 hover:bg-muted/50'
+                          ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                          : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                       }`}
                     >
                       {o.label}
@@ -152,22 +154,24 @@ export function OrganizeToolOptions({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
+                aria-pressed={splitDirection === 'vertical'}
                 onClick={() => onChange('splitDirection', 'vertical')}
-                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium ${
+                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium transition-all ${
                   splitDirection === 'vertical'
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border/60 hover:bg-muted/50'
+                    ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                    : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                 }`}
               >
                 {isZh ? '垂直左右对半' : 'Vertical (Left / Right)'}
               </button>
               <button
                 type="button"
+                aria-pressed={splitDirection === 'horizontal'}
                 onClick={() => onChange('splitDirection', 'horizontal')}
-                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium ${
+                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium transition-all ${
                   splitDirection === 'horizontal'
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border/60 hover:bg-muted/50'
+                    ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                    : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                 }`}
               >
                 {isZh ? '水平上下对半' : 'Horizontal (Top / Bottom)'}
@@ -207,22 +211,24 @@ export function OrganizeToolOptions({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
+                aria-pressed={direction === 'vertical'}
                 onClick={() => onChange('direction', 'vertical')}
-                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium ${
+                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium transition-all ${
                   direction === 'vertical'
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border/60 hover:bg-muted/50'
+                    ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                    : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                 }`}
               >
                 {isZh ? '垂直纵向长图' : 'Vertical Stack'}
               </button>
               <button
                 type="button"
+                aria-pressed={direction === 'horizontal'}
                 onClick={() => onChange('direction', 'horizontal')}
-                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium ${
+                className={`py-2 px-3 text-xs rounded-lg border text-center font-medium transition-all ${
                   direction === 'horizontal'
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border/60 hover:bg-muted/50'
+                    ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                    : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                 }`}
               >
                 {isZh ? '水平横向长图' : 'Horizontal Strip'}
@@ -351,11 +357,12 @@ export function OrganizeToolOptions({
                   <button
                     key={m.id}
                     type="button"
+                    aria-pressed={gridMode === m.id}
                     onClick={() => onChange('gridMode', m.id)}
-                    className={`py-2 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-2 px-2 text-xs rounded-lg border text-center transition-all ${
                       gridMode === m.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {m.label}
@@ -554,10 +561,11 @@ export function OrganizeToolOptions({
                 <button
                   type="button"
                   onClick={() => onChange('layout', 'single-page')}
-                  className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                  aria-pressed={layout === 'single-page'}
+                  className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                     layout === 'single-page'
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
-                      : 'border-border/60 hover:bg-muted/50'
+                      ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-1 ring-[hsl(var(--color-primary))]'
+                      : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                   }`}
                 >
                   {isZh ? '单页正反面同页' : 'Front & Back (1 Page)'}
@@ -565,10 +573,11 @@ export function OrganizeToolOptions({
                 <button
                   type="button"
                   onClick={() => onChange('layout', 'two-cards')}
-                  className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                  aria-pressed={layout === 'two-cards'}
+                  className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                     layout === 'two-cards'
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
-                      : 'border-border/60 hover:bg-muted/50'
+                      ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-1 ring-[hsl(var(--color-primary))]'
+                      : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                   }`}
                 >
                   {isZh ? '多卡片标准排列' : 'Multi-Cards Grid'}
@@ -710,11 +719,12 @@ export function OrganizeToolOptions({
                   <button
                     key={s.id}
                     type="button"
+                    aria-pressed={scaleMode === s.id}
                     onClick={() => onChange('scaleMode', s.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       scaleMode === s.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {s.label}
@@ -749,11 +759,12 @@ export function OrganizeToolOptions({
                   <button
                     key={p.id}
                     type="button"
+                    aria-pressed={padPosition === p.id}
                     onClick={() => onChange('padPosition', p.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       padPosition === p.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {p.label}
@@ -773,11 +784,12 @@ export function OrganizeToolOptions({
                   <button
                     key={g.id}
                     type="button"
+                    aria-pressed={gridType === g.id}
                     onClick={() => onChange('gridType', g.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       gridType === g.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {g.label}
@@ -1005,11 +1017,12 @@ export function OrganizeToolOptions({
                   <button
                     key={m.id}
                     type="button"
+                    aria-pressed={sortMode === m.id}
                     onClick={() => onChange('sortMode', m.id)}
                     className={`py-1.5 px-2.5 rounded-lg border text-left font-medium transition-all ${
                       sortMode === m.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {m.label}
@@ -1146,10 +1159,11 @@ export function OrganizeToolOptions({
                     key={deg}
                     type="button"
                     onClick={() => onChange('angle', deg)}
+                    aria-pressed={angle === deg}
                     className={`py-1.5 rounded-lg border text-center font-medium transition-all ${
                       angle === deg
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-1 ring-[hsl(var(--color-primary))]'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {deg === 0 ? (isZh ? '重置 0°' : 'Reset 0°') : `${deg}°`}
@@ -1185,10 +1199,11 @@ export function OrganizeToolOptions({
                   key={d.id}
                   type="button"
                   onClick={() => onChange('direction', d.id)}
+                  aria-pressed={direction === d.id}
                   className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
                     direction === d.id
-                      ? 'border-primary bg-primary/10 text-primary font-bold'
-                      : 'border-border text-muted-foreground hover:bg-muted'
+                      ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-1 ring-[hsl(var(--color-primary))]'
+                      : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                   }`}
                 >
                   {d.label}
@@ -1210,10 +1225,11 @@ export function OrganizeToolOptions({
                     key={s.id}
                     type="button"
                     onClick={() => onChange('scope', s.id)}
+                    aria-pressed={scope === s.id}
                     className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
                       scope === s.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-1 ring-[hsl(var(--color-primary))]'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {s.label}
@@ -1263,10 +1279,11 @@ export function OrganizeToolOptions({
                     key={m.id}
                     type="button"
                     onClick={() => onChange('mode', m.id)}
+                    aria-pressed={mode === m.id}
                     className={`py-2 px-2.5 rounded-lg border text-center font-medium transition-all ${
                       mode === m.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-1 ring-[hsl(var(--color-primary))]'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {m.label}
@@ -1362,10 +1379,11 @@ export function OrganizeToolOptions({
                     key={m.id}
                     type="button"
                     onClick={() => onChange('compareMode', m.id)}
+                    aria-pressed={compareMode === m.id}
                     className={`py-1.5 px-1.5 rounded-lg border text-center font-medium transition-all ${
                       compareMode === m.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-1 ring-[hsl(var(--color-primary))]'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {m.label}

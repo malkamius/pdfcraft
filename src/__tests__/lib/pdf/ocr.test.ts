@@ -7,6 +7,7 @@ import {
   preprocessCanvas,
   generateMarkdownOutput,
   generateJsonOutput,
+  generateDocxOutput,
 } from '@/lib/pdf/processors/ocr';
 import { PDFErrorCode } from '@/types/pdf';
 
@@ -23,8 +24,10 @@ const mockRecognize = vi.fn().mockResolvedValue({
 });
 
 const mockTerminate = vi.fn().mockResolvedValue(undefined);
+const mockSetParameters = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('tesseract.js', () => ({
+  PSM: { AUTO: '3' },
   default: {
     createWorker: vi.fn().mockImplementation(async (lang, oem, options) => {
       if (options?.logger) {
@@ -32,6 +35,7 @@ vi.mock('tesseract.js', () => ({
       }
       return {
         recognize: mockRecognize,
+        setParameters: mockSetParameters,
         terminate: mockTerminate,
       };
     }),
@@ -42,6 +46,7 @@ vi.mock('tesseract.js', () => ({
     }
     return {
       recognize: mockRecognize,
+      setParameters: mockSetParameters,
       terminate: mockTerminate,
     };
   }),
@@ -49,6 +54,7 @@ vi.mock('tesseract.js', () => ({
 
 // Mock pdf loader
 const mockDrawText = vi.fn();
+const mockEmbedFont = vi.fn().mockImplementation(async () => ({ name: 'MockFont' }));
 const mockAddPage = vi.fn().mockReturnValue({
   drawText: mockDrawText,
   drawImage: vi.fn(),
@@ -84,9 +90,7 @@ vi.mock('@/lib/pdf/loader', () => {
             getPage: () => ({
               drawText: mockDrawText,
             }),
-            embedFont: vi.fn().mockImplementation(async () => ({
-              name: 'MockFont',
-            })),
+            embedFont: mockEmbedFont,
             registerFontkit: vi.fn(),
             setTitle: vi.fn(),
             setSubject: vi.fn(),
@@ -208,6 +212,31 @@ describe('OCRProcessor', () => {
   });
 
   describe('Processing PDF with OCR', () => {
+    it('extracts Tesseract 6 nested words into the searchable PDF', async () => {
+      mockRecognize.mockResolvedValueOnce({ data: {
+        text: 'Nested words',
+        blocks: [{ paragraphs: [{ lines: [{ words: [
+          { text: 'Nested', confidence: 97, bbox: { x0: 10, y0: 10, x1: 70, y1: 30 } },
+        ] }] }] }],
+      } } as any);
+      const result = await ocrPDF(new File(['%PDF-1.4'], 'scan.pdf'), { outputFormat: 'searchable-pdf' });
+      expect(result.success).toBe(true);
+      expect(result.metadata?.totalWords).toBe(1);
+      expect(result.metadata?.avgConfidence).toBe(97);
+      expect(mockDrawText).toHaveBeenCalledWith('Nested', expect.objectContaining({ opacity: 0 }));
+      expect(mockEmbedFont).toHaveBeenCalledTimes(1);
+      expect(mockEmbedFont).toHaveBeenCalledWith('Helvetica');
+    });
+
+    it('reports page recognition failures instead of exporting a successful empty PDF', async () => {
+      mockRecognize.mockRejectedValueOnce(new Error('Recognition failed'));
+      const result = await ocrPDF(new File(['%PDF-1.4'], 'scan.pdf'), { outputFormat: 'searchable-pdf' });
+      expect(result.success).toBe(false);
+      expect(result.error?.details).toContain('OCR failed on page 1: Recognition failed');
+      expect(mockTerminate).toHaveBeenCalled();
+      expect(mockSave).not.toHaveBeenCalled();
+    });
+
     it('successfully processes PDF to text output format', async () => {
       const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]);
       const file = new File([pdfBytes], 'sample.pdf', { type: 'application/pdf' });
@@ -226,12 +255,18 @@ describe('OCRProcessor', () => {
 
       expect(result.success).toBe(true);
       expect(result.filename).toBe('sample_ocr.txt');
+      expect(mockSetParameters).toHaveBeenCalledWith({ tessedit_pageseg_mode: '3' });
+      expect(mockSetParameters).toHaveBeenCalledWith({ user_defined_dpi: '144' });
       expect(result.result).toBeInstanceOf(Blob);
       expect(progressUpdates.length).toBeGreaterThan(0);
       expect(progressUpdates[progressUpdates.length - 1]).toBe(100);
     });
 
     it('successfully creates searchable PDF and embeds invisible text layer', async () => {
+      const fontFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(4),
+      } as Response);
       const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]);
       const file = new File([pdfBytes], 'scanned_doc.pdf', { type: 'application/pdf' });
 
@@ -242,11 +277,13 @@ describe('OCRProcessor', () => {
           outputFormat: 'searchable-pdf',
         },
       });
+      fontFetch.mockRestore();
 
       expect(result.success).toBe(true);
       expect(result.filename).toBe('scanned_doc_searchable.pdf');
       expect(result.result).toBeInstanceOf(Blob);
       expect(mockDrawText).toHaveBeenCalled();
+      expect(mockEmbedFont).toHaveBeenCalledWith(expect.anything(), { subset: true });
     });
 
     it('supports legacy single language string option', async () => {
@@ -371,6 +408,22 @@ describe('OCRProcessor', () => {
       expect(parsed.pages[0].words[0].text).toBe('Invoice');
       expect(parsed.pages[0].words[0].confidence).toBe(95);
     });
+
+    it('generateDocxOutput creates valid OpenXML Word document Blob', async () => {
+      const docxBlob = await generateDocxOutput(
+        [
+          {
+            pageNum: 1,
+            text: 'Hello Word Document\nSecond paragraph text',
+            words: [{ text: 'Hello', confidence: 99 }],
+          },
+        ],
+        'sample.pdf'
+      );
+      expect(docxBlob).toBeInstanceOf(Blob);
+      expect(docxBlob.type).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      expect(docxBlob.size).toBeGreaterThan(100);
+    });
   });
 
   describe('Convenience ocrPDF function', () => {
@@ -381,6 +434,15 @@ describe('OCRProcessor', () => {
       const result = await ocrPDF(file, { outputFormat: 'text' });
       expect(result.success).toBe(true);
       expect(result.filename).toBe('quick_ocr.txt');
+    });
+
+    it('executes OCR with docx output format', async () => {
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]);
+      const file = new File([pdfBytes], 'contract.pdf', { type: 'application/pdf' });
+
+      const result = await ocrPDF(file, { outputFormat: 'docx' });
+      expect(result.success).toBe(true);
+      expect(result.filename).toBe('contract_ocr.docx');
     });
   });
 });

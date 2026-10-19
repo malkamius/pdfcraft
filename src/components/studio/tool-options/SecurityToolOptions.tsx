@@ -311,11 +311,12 @@ export function SecurityToolOptions({
                   <button
                     key={w.id}
                     type="button"
+                    aria-pressed={waxColor === w.id}
                     onClick={() => onChange('waxColor', w.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       waxColor === w.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {w.label}

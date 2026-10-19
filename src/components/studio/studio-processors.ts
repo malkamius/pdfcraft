@@ -51,7 +51,6 @@ export const EXPORT_TOOL_IDS = new Set([
   'extract-images',
   'extract-tables',
   'extract-attachments',
-  'ocr-pdf',
   'annotation-exporter',
   'global-invoice-parser',
   'vector-extractor',
@@ -584,6 +583,16 @@ export async function executeStudioOperation(
       processor = new FlattenPDFProcessor();
       break;
     }
+    case 'ocr-pdf': {
+      const { OCRProcessor } = await import('@/lib/pdf/processors/ocr');
+      processor = new OCRProcessor();
+      options = {
+        ...options,
+        __requestedFormat: options.outputFormat || 'searchable-pdf',
+        outputFormat: 'searchable-pdf',
+      };
+      break;
+    }
     default:
       throw new Error(`Unsupported studio in-place tool: ${toolId}`);
   }
@@ -602,11 +611,15 @@ export async function executeStudioOperation(
     throw new Error(output.error?.message || 'Operation failed');
   }
 
-  if (Array.isArray(output.result)) {
-    return output.result[0] as Blob;
+  const resultBlob = (Array.isArray(output.result) ? output.result[0] : output.result) as Blob;
+  if (output.metadata) {
+    (resultBlob as any).__metadata = {
+      ...output.metadata,
+      requestedFormat: options.__requestedFormat || output.metadata.outputFormat || 'searchable-pdf',
+    };
   }
 
-  return output.result as Blob;
+  return resultBlob;
 }
 
 /**
@@ -696,7 +709,15 @@ export async function executeStudioExport(
     case 'ocr-pdf': {
       const { OCRProcessor } = await import('@/lib/pdf/processors/ocr');
       processor = new OCRProcessor();
-      targetExtension = options.outputFormat === 'text' ? 'txt' : 'pdf';
+      targetExtension = options.outputFormat === 'text'
+        ? 'txt'
+        : options.outputFormat === 'markdown'
+        ? 'md'
+        : options.outputFormat === 'json'
+        ? 'json'
+        : options.outputFormat === 'docx'
+        ? 'docx'
+        : 'pdf';
       break;
     }
     case 'pdf-to-markdown': {

@@ -76,7 +76,10 @@ export async function scanPdfForSignatures(
         const rawRect = annot.rect; // [x1, y1, x2, y2]
         if (Array.isArray(rawRect) && rawRect.length === 4) {
           // Convert PDF coordinates to viewport coordinates
-          const viewRect = viewport.convertToViewportRectangle(rawRect);
+          const viewRect = [
+            ...viewport.convertToViewportPoint(rawRect[0], rawRect[1]),
+            ...viewport.convertToViewportPoint(rawRect[2], rawRect[3]),
+          ];
           // viewRect is [x1, y1, x2, y2] in viewport space
           const minX = Math.min(viewRect[0], viewRect[2]);
           const minY = Math.min(viewRect[1], viewRect[3]);
@@ -144,6 +147,7 @@ export async function renderPdfPage(
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   await page.render({
+    canvas: null,
     canvasContext: ctx,
     viewport,
   }).promise;

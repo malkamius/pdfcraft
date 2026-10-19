@@ -160,7 +160,7 @@ export function CropPDFTool({ className = '' }: CropPDFToolProps) {
       }
 
       const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
       setState(prev => ({
         ...prev,
@@ -194,6 +194,7 @@ export function CropPDFTool({ className = '' }: CropPDFToolProps) {
       if (!context) throw new Error('Could not get canvas context');
 
       await page.render({
+        canvas: null,
         canvasContext: context,
         viewport: viewport
       }).promise;

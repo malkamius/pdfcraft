@@ -115,6 +115,7 @@ export function FindAndRedactTool({ className = '' }: FindAndRedactToolProps) {
                     canvas.width = viewport.width;
                     context.clearRect(0, 0, canvas.width, canvas.height);
                     await page.render({
+                        canvas: null,
                         canvasContext: context,
                         viewport: viewport,
                     }).promise;
@@ -165,6 +166,7 @@ export function FindAndRedactTool({ className = '' }: FindAndRedactToolProps) {
 
             // Render the PDF page
             await page.render({
+                canvas: null,
                 canvasContext: context,
                 viewport: viewport,
             }).promise;

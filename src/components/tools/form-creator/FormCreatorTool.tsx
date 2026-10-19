@@ -447,7 +447,7 @@ export function FormCreatorTool({ className = '' }: FormCreatorToolProps) {
       canvas.style.width = `${displayViewport.width}px`;
       canvas.style.height = `${displayViewport.height}px`;
 
-      await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+      await page.render({ canvas: null, canvasContext: ctx, viewport: renderViewport }).promise;
     } catch (err) {
       console.error('Failed to render page:', err);
     }

@@ -152,7 +152,7 @@ export function ComparePDFsTool({ className = '' }: ComparePDFsToolProps) {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        await page.render({ canvas: null, canvasContext: ctx, viewport }).promise;
         pagesImages.push(canvas.toDataURL('image/jpeg', 0.85));
 
         // 2. Extract Bounding Box coordinates for text items

@@ -395,5 +395,60 @@ describe('PDFStudio Component', () => {
     expect(screen.getByText('2-Up')).toBeInTheDocument();
     expect(screen.getByText('4-Up')).toBeInTheDocument();
   });
+
+  it('runs OCR and opens results in memory without triggering save/export until the user chooses to save', async () => {
+    const mockOcrPdfBlob = new Blob(['%PDF-1.4 searchable ocr'], { type: 'application/pdf' });
+    (mockOcrPdfBlob as any).__metadata = {
+      totalWords: 42,
+      avgConfidence: 96,
+      rawText: 'Recognized invoice text in memory',
+      markdownText: '# Invoice\n\nRecognized invoice text in memory',
+      jsonText: '{"text":"Recognized invoice text in memory"}',
+      requestedFormat: 'searchable-pdf',
+    };
+    vi.spyOn(studioProcessors, 'executeStudioOperation').mockResolvedValue(mockOcrPdfBlob);
+
+    const file = createDummyPdfFile('scan.pdf');
+    render(<PDFStudio locale="en" initialFile={file} />);
+
+    // Open OCR tool from left rail
+    const searchInput = screen.getByTestId('studio-tool-search');
+    fireEvent.change(searchInput, { target: { value: 'ocr' } });
+    const ocrToolBtn = screen.getByTestId('tool-item-ocr-pdf');
+    fireEvent.click(ocrToolBtn);
+
+    // Click Apply Changes (runs in memory, does NOT call saveBlobFile)
+    const applyBtn = screen.getByRole('button', { name: /Apply Changes/i });
+    fireEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(studioProcessors.executeStudioOperation).toHaveBeenCalledWith(
+        expect.any(File),
+        'ocr-pdf',
+        expect.any(Object)
+      );
+    });
+
+    // Should NOT have triggered save/export automatically
+    expect(tauriBridge.saveBlobFile).not.toHaveBeenCalled();
+
+    // In-memory OCR bar should appear with word count and confidence
+    expect(screen.getByTestId('studio-ocr-memory-bar')).toBeInTheDocument();
+    expect(screen.getByText(/OCR Open in Memory/i)).toBeInTheDocument();
+    expect(screen.getByText(/42 words/i)).toBeInTheDocument();
+
+    // User can preview the extracted text in memory
+    fireEvent.click(screen.getByRole('button', { name: /Preview Extracted Text/i }));
+    expect(screen.getByText('Recognized invoice text in memory')).toBeInTheDocument();
+
+    // When the user likes the results, they can click Save & Export OCR
+    fireEvent.click(screen.getByRole('button', { name: /Save & Export OCR/i }));
+    await waitFor(() => {
+      expect(tauriBridge.saveBlobFile).toHaveBeenCalledWith(
+        mockOcrPdfBlob,
+        'scan_searchable.pdf'
+      );
+    });
+  });
 });
 

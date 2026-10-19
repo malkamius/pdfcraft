@@ -366,6 +366,7 @@ export class PDFToImageProcessor extends BasePDFProcessor {
 
     // Render PDF page to canvas
     await page.render({
+      canvas: null,
       canvasContext: ctx,
       viewport: viewport,
     }).promise;
@@ -453,6 +454,7 @@ export class PDFToImageProcessor extends BasePDFProcessor {
       ctx.save();
       ctx.translate(xOffset, yOffset);
       await page.render({
+        canvas: null,
         canvasContext: ctx,
         viewport: page.getViewport({ scale: options.scale }),
       }).promise;

@@ -92,6 +92,7 @@ export function GridCombineTool({ className = '' }: GridCombineToolProps) {
             canvas.height = viewport.height;
 
             await page.render({
+                canvas: null,
                 canvasContext: context,
                 viewport: viewport,
             }).promise;

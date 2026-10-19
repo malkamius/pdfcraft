@@ -155,6 +155,7 @@ export class PDFToCBZProcessor extends BasePDFProcessor {
         }
 
         await page.render({
+          canvas: null,
           canvasContext: ctx,
           viewport: viewport,
         }).promise;

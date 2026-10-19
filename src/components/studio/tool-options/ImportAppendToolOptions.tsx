@@ -351,11 +351,12 @@ export function ImportAppendToolOptions({
                     <button
                       key={l.id}
                       type="button"
+                      aria-pressed={attachmentLevel === l.id}
                       onClick={() => onChange('attachmentLevel', l.id)}
                       className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
                         attachmentLevel === l.id
-                          ? 'border-primary bg-primary/10 text-primary font-bold'
-                          : 'border-border text-muted-foreground hover:bg-muted'
+                          ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                          : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                       }`}
                     >
                       {l.label}
@@ -414,14 +415,15 @@ export function ImportAppendToolOptions({
                     <button
                       key={a.id}
                       type="button"
+                      aria-pressed={action === a.id}
                       onClick={() => {
                         onChange('action', a.id);
                         if (a.id === 'purge-all') onChange('removeAll', true);
                       }}
                       className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
                         action === a.id
-                          ? 'border-primary bg-primary/10 text-primary font-bold'
-                          : 'border-border text-muted-foreground hover:bg-muted'
+                          ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                          : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                       }`}
                     >
                       {a.label}

@@ -82,6 +82,7 @@ export function ExtractPagesTool({ className = '' }: ExtractPagesToolProps) {
           canvas.width = viewport.width;
           
           await page.render({
+            canvas: null,
             canvasContext: context,
             viewport: viewport,
           }).promise;

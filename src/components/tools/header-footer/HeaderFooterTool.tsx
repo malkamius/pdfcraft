@@ -92,7 +92,7 @@ export function HeaderFooterTool({ className = '' }: HeaderFooterToolProps) {
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
-      await page.render({ canvasContext: ctx, viewport }).promise;
+      await page.render({ canvas: null, canvasContext: ctx, viewport }).promise;
 
       // Check if page should show header/footer
       const shouldShowContent = isPageInRange(pageNum) && !(skipFirstPage && pageNum === 1);

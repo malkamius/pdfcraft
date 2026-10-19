@@ -239,7 +239,7 @@ export class GridCombineProcessor extends BasePDFProcessor {
                 // Render each page to PNG and embed into output PDF
                 for (const pageNum of pageNumbers) {
                     if (this.checkCancelled()) {
-                        pdf.destroy();
+                        await pdf.loadingTask.destroy();
                         return this.createErrorOutput(
                             PDFErrorCode.PROCESSING_CANCELLED,
                             'Processing was cancelled.'
@@ -257,6 +257,7 @@ export class GridCombineProcessor extends BasePDFProcessor {
                         const ctx = canvas.getContext('2d')!;
 
                         await page.render({
+                            canvas: null,
                             canvasContext: ctx,
                             viewport,
                         }).promise;
@@ -291,7 +292,7 @@ export class GridCombineProcessor extends BasePDFProcessor {
                     }
                 }
 
-                pdf.destroy();
+                await pdf.loadingTask.destroy();
             }
 
             if (cellItems.length === 0) {

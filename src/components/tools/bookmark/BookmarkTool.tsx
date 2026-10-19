@@ -218,6 +218,7 @@ export function BookmarkTool({ className = '' }: BookmarkToolProps) {
       canvas.height = scaledViewport.height;
 
       await page.render({
+        canvas: null,
         canvasContext: ctx,
         viewport: scaledViewport,
       }).promise;

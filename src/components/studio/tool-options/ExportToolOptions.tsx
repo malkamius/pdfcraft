@@ -138,11 +138,12 @@ export function ExportToolOptions({
                   <button
                     key={c.id}
                     type="button"
+                    aria-pressed={colorMode === c.id}
                     onClick={() => onChange('colorMode', c.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       colorMode === c.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {c.label}
@@ -304,15 +305,16 @@ export function ExportToolOptions({
                   <button
                     key={d.id}
                     type="button"
+                    aria-pressed={dpi === d.id}
                     onClick={() => onChange('dpi', d.id)}
-                    className={`flex flex-col items-center py-2 px-1 text-xs rounded-lg border ${
+                    className={`flex flex-col items-center py-2 px-1 text-xs rounded-lg border transition-all ${
                       dpi === d.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     <span>{d.label}</span>
-                    <span className="text-[10px] text-muted-foreground">{d.desc}</span>
+                    <span className={`text-[10px] ${dpi === d.id ? 'text-white/80' : 'text-muted-foreground'}`}>{d.desc}</span>
                   </button>
                 ))}
               </div>
@@ -386,11 +388,12 @@ export function ExportToolOptions({
                   <button
                     key={f.id}
                     type="button"
+                    aria-pressed={format === f.id}
                     onClick={() => onChange('format', f.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       format === f.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {f.label}
@@ -446,11 +449,12 @@ export function ExportToolOptions({
                   <button
                     key={fmt}
                     type="button"
+                    aria-pressed={format === fmt}
                     onClick={() => onChange('format', fmt)}
-                    className={`py-1 px-2 text-xs rounded-lg border text-center uppercase ${
+                    className={`py-1 px-2 text-xs rounded-lg border text-center uppercase transition-all ${
                       format === fmt
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {fmt}
@@ -599,6 +603,7 @@ export function ExportToolOptions({
                 <option value="spa">{isZh ? '西班牙语 (Español)' : 'Spanish'}</option>
                 <option value="por">{isZh ? '葡萄牙语 (Português)' : 'Portuguese'}</option>
                 <option value="ara">{isZh ? '阿拉伯语 (العربية)' : 'Arabic'}</option>
+                <option value="hun">{isZh ? '匈牙利语 (Magyar)' : 'Hungarian'}</option>
               </select>
             </div>
 
@@ -608,18 +613,20 @@ export function ExportToolOptions({
               <div className="grid grid-cols-2 gap-1.5 text-xs">
                 {[
                   { id: 'searchable-pdf', label: isZh ? '双层可搜索 PDF' : 'Searchable PDF' },
-                  { id: 'text', label: isZh ? '纯文本 TXT' : 'Plain Text (.txt)' },
                   { id: 'docx', label: isZh ? 'Word 文档 (.docx)' : 'Word (.docx)' },
+                  { id: 'text', label: isZh ? '纯文本 TXT' : 'Plain Text (.txt)' },
+                  { id: 'markdown', label: isZh ? 'Markdown 格式 (.md)' : 'Markdown (.md)' },
                   { id: 'json', label: isZh ? '坐标 JSON 数据' : 'JSON Data' },
                 ].map((f) => (
                   <button
                     key={f.id}
                     type="button"
+                    aria-pressed={outputFormat === f.id}
                     onClick={() => onChange('outputFormat', f.id)}
-                    className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
+                    className={`py-2 px-2 rounded-xl border text-center font-medium transition-all ${
                       outputFormat === f.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-2 ring-[hsl(var(--color-primary)/0.25)]'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {f.label}
@@ -639,11 +646,12 @@ export function ExportToolOptions({
                   <button
                     key={s.id}
                     type="button"
+                    aria-pressed={pageScope === s.id}
                     onClick={() => onChange('pageScope', s.id)}
-                    className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
+                    className={`py-2 px-2 rounded-xl border text-center font-medium transition-all ${
                       pageScope === s.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-sm ring-2 ring-[hsl(var(--color-primary)/0.25)]'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {s.label}
@@ -657,7 +665,7 @@ export function ExportToolOptions({
                     value={customPages}
                     onChange={(e) => onChange('customPages', e.target.value)}
                     placeholder={isZh ? '如 1-5, 8' : 'e.g. 1-5, 8'}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-border bg-background"
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-foreground))]"
                   />
                 </div>
               )}
@@ -665,22 +673,30 @@ export function ExportToolOptions({
 
             {/* Enhancements */}
             <div className="space-y-2 text-xs pt-1">
-              <label className="flex items-center justify-between p-2 rounded-lg border border-border/50 hover:bg-muted/40 cursor-pointer">
+              <label className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                deskew
+                  ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary)/0.08)] text-[hsl(var(--color-foreground))] font-medium shadow-xs'
+                  : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] hover:border-[hsl(var(--color-primary)/0.4)] hover:bg-[hsl(var(--color-muted)/0.4)] text-[hsl(var(--color-muted-foreground))]'
+              }`}>
                 <span>{isZh ? '图像自动倾斜校正与降噪' : 'Auto-Deskew & Denoise'}</span>
                 <input
                   type="checkbox"
                   checked={deskew}
                   onChange={(e) => onChange('deskew', e.target.checked)}
-                  className="rounded text-primary accent-primary"
+                  className="w-4 h-4 rounded text-[hsl(var(--color-primary))] accent-[hsl(var(--color-primary))]"
                 />
               </label>
-              <label className="flex items-center justify-between p-2 rounded-lg border border-border/50 hover:bg-muted/40 cursor-pointer">
+              <label className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                preserveLayout
+                  ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary)/0.08)] text-[hsl(var(--color-foreground))] font-medium shadow-xs'
+                  : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] hover:border-[hsl(var(--color-primary)/0.4)] hover:bg-[hsl(var(--color-muted)/0.4)] text-[hsl(var(--color-muted-foreground))]'
+              }`}>
                 <span>{isZh ? '保持原始多栏段落排版版式' : 'Preserve Multi-Column Layout'}</span>
                 <input
                   type="checkbox"
                   checked={preserveLayout}
                   onChange={(e) => onChange('preserveLayout', e.target.checked)}
-                  className="rounded text-primary accent-primary"
+                  className="w-4 h-4 rounded text-[hsl(var(--color-primary))] accent-[hsl(var(--color-primary))]"
                 />
               </label>
             </div>
@@ -722,11 +738,12 @@ export function ExportToolOptions({
                     <button
                       key={f.id}
                       type="button"
+                      aria-pressed={format === f.id}
                       onClick={() => onChange('format', f.id)}
                       className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
                         format === f.id
-                          ? 'border-primary bg-primary/10 text-primary font-bold'
-                          : 'border-border text-muted-foreground hover:bg-muted'
+                          ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                          : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                       }`}
                     >
                       {f.label}
@@ -775,11 +792,12 @@ export function ExportToolOptions({
                     <button
                       key={ef.id}
                       type="button"
+                      aria-pressed={exportFormat === ef.id}
                       onClick={() => onChange('exportFormat', ef.id)}
                       className={`py-1.5 px-2 rounded-lg border text-center font-medium transition-all ${
                         exportFormat === ef.id
-                          ? 'border-primary bg-primary/10 text-primary font-bold'
-                          : 'border-border text-muted-foreground hover:bg-muted'
+                          ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                          : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                       }`}
                     >
                       {ef.label}

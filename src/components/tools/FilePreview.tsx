@@ -95,7 +95,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
         setPreviewUrl(url);
 
         // Load PDF document
-        const loadingTask = pdfjsLib.getDocument(url);
+        const loadingTask = pdfjsLib.getDocument({ url });
         const pdf = await loadingTask.promise;
         
         setPdfDoc(pdf);
@@ -149,6 +149,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
 
         // Render page
         const renderContext = {
+          canvas: null,
           canvasContext: context,
           viewport: scaledViewport,
         };

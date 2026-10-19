@@ -66,11 +66,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={m.id}
                     type="button"
+                    aria-pressed={mode === m.id}
                     onClick={() => onChange('mode', m.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       mode === m.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {m.label}
@@ -216,11 +217,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={s.id}
                     type="button"
+                    aria-pressed={strategy === s.id}
                     onClick={() => onChange('strategy', s.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       strategy === s.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {s.label}
@@ -271,11 +273,12 @@ export function EditAnnotateToolOptions({
                 <button
                   key={b.id}
                   type="button"
+                  aria-pressed={barcodeType === b.id}
                   onClick={() => onChange('barcodeType', b.id)}
-                  className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                  className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                     barcodeType === b.id
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
-                      : 'border-border/60 hover:bg-muted/50'
+                      ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                      : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                   }`}
                 >
                   {b.label}
@@ -345,11 +348,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={k.id}
                     type="button"
+                    aria-pressed={inkType === k.id}
                     onClick={() => onChange('inkType', k.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       inkType === k.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {k.label}
@@ -412,11 +416,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={f.id}
                     type="button"
+                    aria-pressed={filterMode === f.id}
                     onClick={() => onChange('filterMode', f.id)}
-                    className={`py-1.5 px-2 text-xs rounded-lg border text-center ${
+                    className={`py-1.5 px-2 text-xs rounded-lg border text-center transition-all ${
                       filterMode === f.id
-                        ? 'border-primary bg-primary/10 text-primary font-medium'
-                        : 'border-border/60 hover:bg-muted/50'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {f.label}
@@ -497,11 +502,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={m.id}
                     type="button"
+                    aria-pressed={editMode === m.id}
                     onClick={() => onChange('editMode', m.id)}
                     className={`py-2 px-2 rounded-lg border text-center font-medium transition-all ${
                       editMode === m.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {m.label}
@@ -523,11 +529,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={t.id}
                     type="button"
+                    aria-pressed={toolType === t.id}
                     onClick={() => onChange('toolType', t.id)}
                     className={`py-1.5 rounded-lg border text-center font-medium transition-all ${
                       toolType === t.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {t.label}
@@ -594,11 +601,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={s.id}
                     type="button"
+                    aria-pressed={signType === s.id}
                     onClick={() => onChange('signType', s.id)}
                     className={`py-1.5 rounded-lg border text-center font-medium transition-all ${
                       signType === s.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {s.label}
@@ -619,11 +627,12 @@ export function EditAnnotateToolOptions({
                   <button
                     key={p.id}
                     type="button"
+                    aria-pressed={placement === p.id}
                     onClick={() => onChange('placement', p.id)}
                     className={`py-1.5 px-1 rounded-lg border text-center font-medium transition-all ${
                       placement === p.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary))] text-white font-bold shadow-xs'
+                        : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:border-[hsl(var(--color-primary)/0.5)] hover:bg-[hsl(var(--color-muted)/0.5)] hover:text-[hsl(var(--color-foreground))]'
                     }`}
                   >
                     {p.label}

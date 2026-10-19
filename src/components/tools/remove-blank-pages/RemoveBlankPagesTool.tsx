@@ -133,6 +133,7 @@ export function RemoveBlankPagesTool({ className = '' }: RemoveBlankPagesToolPro
           canvas.height = viewport.height;
 
           await page.render({
+            canvas: null,
             canvasContext: context,
             viewport: viewport,
           }).promise;

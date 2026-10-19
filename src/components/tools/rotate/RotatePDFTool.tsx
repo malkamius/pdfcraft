@@ -103,6 +103,7 @@ export function RotatePDFTool({ className = '' }: RotatePDFToolProps) {
           canvas.width = viewport.width;
 
           await page.render({
+            canvas: null,
             canvasContext: context,
             viewport: viewport,
           }).promise;

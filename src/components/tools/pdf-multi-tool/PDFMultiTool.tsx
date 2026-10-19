@@ -126,6 +126,7 @@ export function PDFMultiTool({ className = '' }: PDFMultiToolProps) {
               canvas.width = viewport.width;
 
               await page.render({
+                canvas: null,
                 canvasContext: context,
                 viewport: viewport,
               }).promise;

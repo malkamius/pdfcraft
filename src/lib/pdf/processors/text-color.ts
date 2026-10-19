@@ -92,6 +92,7 @@ export class TextColorProcessor extends BasePDFProcessor {
         const ctx = canvas.getContext('2d')!;
 
         await page.render({
+          canvas: null,
           canvasContext: ctx,
           viewport: renderViewport,
         }).promise;

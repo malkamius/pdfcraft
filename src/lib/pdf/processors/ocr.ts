@@ -14,6 +14,7 @@ import type {
 import { PDFErrorCode } from '@/types/pdf';
 import { BasePDFProcessor } from '../processor';
 import { loadPdfjs, loadPdfLib } from '../loader';
+import { withBasePath } from '@/lib/utils/path';
 
 /**
  * Supported OCR languages
@@ -33,7 +34,7 @@ export interface OCROptions {
   /** Specific pages to OCR (empty = all pages) */
   pages: number[];
   /** Output format */
-  outputFormat: 'text' | 'searchable-pdf' | 'markdown' | 'json';
+  outputFormat: 'text' | 'searchable-pdf' | 'markdown' | 'json' | 'docx';
   /** Preserve original layout in text output */
   preserveLayout: boolean;
   /** Auto enhance contrast and sharpness before OCR (recommended for scans & receipts) */
@@ -72,6 +73,7 @@ export const OCR_LANGUAGE_NAMES: Record<OCRLanguage, string> = {
 
 // Tesseract worker type
 type TesseractWorker = {
+  setParameters: (parameters: Record<string, string>) => Promise<unknown>;
   loadLanguage?: (lang: string) => Promise<void>;
   initialize?: (lang: string) => Promise<void>;
   recognize: (image: string | HTMLCanvasElement, options?: any, output?: any) => Promise<{ data: { text: string; words?: any[]; blocks?: any[] } }>;
@@ -226,6 +228,97 @@ export function generateJsonOutput(
 /**
  * Detect file type by sniffing binary magic bytes first, then MIME/extension
  */
+/**
+ * Generate a standard Microsoft Word (.docx) file from OCR results using OpenXML packaged with JSZip
+ */
+export async function generateDocxOutput(
+  pagesData: Array<{ pageNum: number; text: string; words: any[] }>,
+  docTitle: string
+): Promise<Blob> {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+
+  const escapeXml = (str: string) =>
+    str.replace(/[<>&'"]/g, (c) => {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case '\'': return '&apos;';
+        case '"': return '&quot;';
+        default: return c;
+      }
+    });
+
+  zip.file(
+    '[Content_Types].xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`
+  );
+
+  zip.file(
+    '_rels/.rels',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`
+  );
+
+  let bodyXml = '';
+  const cleanTitle = docTitle.replace(/\.[^.]+$/, '');
+  bodyXml += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t>${escapeXml(cleanTitle)}</w:t></w:r></w:p>`;
+  bodyXml += `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="666666"/><w:sz w:val="20"/></w:rPr><w:t>Extracted via PDFCraft OCR on ${escapeXml(new Date().toLocaleDateString())}</w:t></w:r></w:p>`;
+  bodyXml += `<w:p/>`;
+
+  for (let i = 0; i < pagesData.length; i++) {
+    const p = pagesData[i];
+    bodyXml += `<w:p><w:r><w:rPr><w:b/><w:color w:val="2B579A"/><w:sz w:val="26"/></w:rPr><w:t>Page ${p.pageNum}</w:t></w:r></w:p>`;
+
+    const lines = (p.text || '').split(/\r?\n/);
+    let currentParagraph = '';
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        if (currentParagraph) {
+          bodyXml += `<w:p><w:r><w:rPr><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${escapeXml(currentParagraph)}</w:t></w:r></w:p>`;
+          currentParagraph = '';
+        }
+      } else {
+        currentParagraph = currentParagraph ? `${currentParagraph} ${line}` : line;
+      }
+    }
+
+    if (currentParagraph) {
+      bodyXml += `<w:p><w:r><w:rPr><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${escapeXml(currentParagraph)}</w:t></w:r></w:p>`;
+    }
+
+    if (i < pagesData.length - 1) {
+      bodyXml += `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+    }
+  }
+
+  bodyXml += `<w:sectPr/>`;
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    ${bodyXml}
+  </w:body>
+</w:document>`;
+
+  zip.file('word/document.xml', documentXml);
+
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  });
+}
+
 export async function detectFileType(file: File | Blob): Promise<'pdf' | 'image' | 'unknown'> {
   try {
     let bytes: Uint8Array = new Uint8Array(0);
@@ -437,7 +530,7 @@ export class OCRProcessor extends BasePDFProcessor {
           textResults.push(`--- Page ${pageNum} ---\n${pageData.text}`);
           ocrPagesData.push({ pageNum, words: pageData.words });
         } catch (error) {
-          textResults.push(`--- Page ${pageNum} ---\n[OCR Error: ${error instanceof Error ? error.message : 'Unknown error'}]`);
+          throw new Error(`OCR failed on page ${pageNum}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
@@ -468,38 +561,32 @@ export class OCRProcessor extends BasePDFProcessor {
       let outputFilename: string;
       const baseName = file.name.replace(/\.(pdf|png|jpe?g|webp|bmp|tiff?)$/i, '');
       const fullText = textResults.join('\n\n');
+      const pagesWithText = ocrPagesData.map((p, idx) => ({
+        pageNum: p.pageNum,
+        text: textResults[idx] ? textResults[idx].replace(/^--- Page \d+ ---\n/, '') : '',
+        words: p.words,
+      }));
+      const mdText = generateMarkdownOutput(pagesWithText, file.name);
+      const jsonText = generateJsonOutput(pagesWithText, {
+        fileName: file.name,
+        languages: ocrOptions.languages,
+        totalWords,
+        totalChars,
+        avgConfidence,
+      });
 
       if (ocrOptions.outputFormat === 'text') {
         blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
         outputFilename = `${baseName}_ocr.txt`;
       } else if (ocrOptions.outputFormat === 'markdown') {
-        const mdText = generateMarkdownOutput(
-          ocrPagesData.map((p, idx) => ({
-            pageNum: p.pageNum,
-            text: textResults[idx] ? textResults[idx].replace(/^--- Page \d+ ---\n/, '') : '',
-            words: p.words,
-          })),
-          file.name
-        );
         blob = new Blob([mdText], { type: 'text/markdown;charset=utf-8' });
         outputFilename = `${baseName}_ocr.md`;
       } else if (ocrOptions.outputFormat === 'json') {
-        const jsonText = generateJsonOutput(
-          ocrPagesData.map((p, idx) => ({
-            pageNum: p.pageNum,
-            text: textResults[idx] ? textResults[idx].replace(/^--- Page \d+ ---\n/, '') : '',
-            words: p.words,
-          })),
-          {
-            fileName: file.name,
-            languages: ocrOptions.languages,
-            totalWords,
-            totalChars,
-            avgConfidence,
-          }
-        );
         blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
         outputFilename = `${baseName}_ocr.json`;
+      } else if (ocrOptions.outputFormat === 'docx') {
+        blob = await generateDocxOutput(pagesWithText, file.name);
+        outputFilename = `${baseName}_ocr.docx`;
       } else {
         // For searchable PDF, create a PDF with the extracted text layer
         blob = await this.createSearchablePDF(effectiveFileForSearchable, ocrPagesData, ocrOptions);
@@ -516,6 +603,9 @@ export class OCRProcessor extends BasePDFProcessor {
         totalChars,
         avgConfidence,
         rawText: fullText,
+        markdownText: mdText,
+        jsonText,
+        pagesData: pagesWithText,
       });
 
     } catch (error) {
@@ -523,7 +613,7 @@ export class OCRProcessor extends BasePDFProcessor {
       return this.createErrorOutput(
         PDFErrorCode.PROCESSING_FAILED,
         'Failed to perform OCR on file.',
-        error instanceof Error ? error.message : 'Unknown error'
+        error instanceof Error ? error.message : String(error)
       );
     }
   }
@@ -596,17 +686,40 @@ export class OCRProcessor extends BasePDFProcessor {
     const Tesseract = await import('tesseract.js');
     const langString = languages && languages.length > 0 ? languages.join('+') : 'eng';
 
-    this.tesseractWorker = await Tesseract.createWorker(langString, 1, {
-      logger: (m: any) => {
-        if (m && m.status) {
-          const percent = typeof m.progress === 'number' ? Math.round(m.progress * 100) : 0;
-          this.updateProgress(
-            15 + Math.round((m.progress || 0) * 10),
-            `OCR: ${m.status}${percent > 0 ? ` (${percent}%)` : ''}`
-          );
-        }
-      },
-    }) as unknown as TesseractWorker;
+        const isEngOnly = !languages || languages.length === 0 || (languages.length === 1 && languages[0] === 'eng');
+
+    const logger = (m: any) => {
+      if (m && m.status) {
+        const percent = typeof m.progress === 'number' ? Math.round(m.progress * 100) : 0;
+        this.updateProgress(
+          15 + Math.round((m.progress || 0) * 10),
+          `OCR: ${m.status}${percent > 0 ? ` (${percent}%)` : ''}`
+        );
+      }
+    };
+
+    const workerOptions: any = {
+      logger,
+      workerPath: withBasePath('/workers/tesseract/worker.min.js'),
+      corePath: withBasePath('/workers/tesseract/tesseract-core-lstm.wasm.js'),
+      workerBlobURL: false,
+    };
+
+    if (isEngOnly) {
+      workerOptions.langPath = withBasePath('/tessdata');
+    }
+
+    try {
+      this.tesseractWorker = (await Tesseract.createWorker(langString, 1, workerOptions)) as unknown as TesseractWorker;
+    } catch (localErr) {
+      console.warn('Local Tesseract worker initialization failed, attempting fallback:', localErr);
+      this.tesseractWorker = (await Tesseract.createWorker(langString, 1, {
+        logger,
+      })) as unknown as TesseractWorker;
+    }
+    // Pages can contain headings, paragraphs, columns, and captions. Tesseract's
+    // single-block default can split large headings into incorrect text lines.
+    await this.tesseractWorker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
   }
 
   /**
@@ -650,6 +763,7 @@ export class OCRProcessor extends BasePDFProcessor {
 
     // Render PDF page to canvas
     await page.render({
+      canvas,
       canvasContext: ctx,
       viewport: viewport,
     }).promise;
@@ -660,6 +774,9 @@ export class OCRProcessor extends BasePDFProcessor {
     }
 
     // Perform OCR with explicit blocks/hocr requests to ensure word coordinates are extracted
+    await this.tesseractWorker.setParameters({
+      user_defined_dpi: String(Math.round(72 * options.scale)),
+    });
     const result = await (this.tesseractWorker as any).recognize(
       canvas,
       {},
@@ -670,7 +787,12 @@ export class OCRProcessor extends BasePDFProcessor {
     const pdfViewport = page.getViewport({ scale: 1.0 });
     const pageHeight = pdfViewport.height;
 
-    const rawWords = result.data.words || [];
+    // Tesseract 6 returns word geometry inside blocks, rather than data.words.
+    const rawWords = result.data.words ?? (result.data.blocks || []).flatMap((block: any) =>
+      (block.paragraphs || []).flatMap((paragraph: any) =>
+        (paragraph.lines || []).flatMap((line: any) => line.words || [])
+      )
+    );
     const words = rawWords.map((w: any) => {
       const bbox = w.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 };
       const { x0, y0, x1, y1 } = bbox;
@@ -714,14 +836,17 @@ export class OCRProcessor extends BasePDFProcessor {
 
     // Register fontkit and load Unicode font for non-Latin characters (Chinese, Japanese, Korean, etc.)
     let unicodeFont: any = null;
-    try {
+    const needsUnicodeFont = ocrPagesData.some(page =>
+      page.words.some(word => /[^\u0020-\u007E]/.test(word.text || ''))
+    );
+    if (needsUnicodeFont) try {
       const fontkit = await import('@pdf-lib/fontkit');
       pdfDoc.registerFontkit(fontkit.default || fontkit);
 
       let fontBuffer: ArrayBuffer | null = null;
       if (typeof window !== 'undefined') {
         try {
-          const res = await fetch('/fonts/NotoSansSC-Regular.ttf');
+          const res = await fetch(withBasePath('/fonts/NotoSansSC-Regular.ttf'));
           if (res.ok) {
             fontBuffer = await res.arrayBuffer();
           }
@@ -743,7 +868,8 @@ export class OCRProcessor extends BasePDFProcessor {
       }
 
       if (fontBuffer) {
-        unicodeFont = await pdfDoc.embedFont(fontBuffer, { subset: false });
+        // Embed only glyphs used in the OCR layer, rather than the entire CJK font.
+        unicodeFont = await pdfDoc.embedFont(fontBuffer, { subset: true });
       }
     } catch (fontErr) {
       console.warn('[OCR] Unicode font embedding not available, falling back to standard font', fontErr);

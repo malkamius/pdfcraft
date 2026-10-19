@@ -120,6 +120,7 @@ export function SplitPDFTool({ className = '' }: SplitPDFToolProps) {
           canvas.width = viewport.width;
 
           await page.render({
+            canvas: null,
             canvasContext: context,
             viewport: viewport,
           }).promise;

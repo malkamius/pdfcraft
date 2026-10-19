@@ -316,4 +316,57 @@ describe('StudioToolDrawer - Full Tool Parameters Alignment', () => {
     expect(screen.getByText('View & Delete')).toBeInTheDocument();
     unmount3();
   });
+
+  it('runs OCR in memory via onApply instead of triggering save/export', async () => {
+    const { unmount } = render(
+      <StudioToolDrawer
+        toolId="ocr-pdf"
+        onClose={onCloseMock}
+        onApply={onApplyMock}
+        onExport={onExportMock}
+        isApplying={false}
+        locale="en"
+      />
+    );
+
+    // Verify format buttons exist
+    const textButton = screen.getByRole('button', { name: /Plain Text \(\.txt\)/i });
+    const markdownButton = screen.getByRole('button', { name: /Markdown \(\.md\)/i });
+    const jsonButton = screen.getByRole('button', { name: /JSON Data/i });
+    const pdfButton = screen.getByRole('button', { name: /Searchable PDF/i });
+
+    expect(textButton).toBeInTheDocument();
+    expect(markdownButton).toBeInTheDocument();
+    expect(jsonButton).toBeInTheDocument();
+    expect(pdfButton).toBeInTheDocument();
+
+    // Click Plain Text (.txt) format
+    fireEvent.click(textButton);
+
+    // Submit form (click Apply Changes to run in memory, not Export & Save)
+    const applyButton = screen.getByRole('button', { name: /Apply Changes/i });
+    fireEvent.click(applyButton);
+
+    expect(onApplyMock).toHaveBeenCalledWith(
+      'ocr-pdf',
+      expect.objectContaining({
+        outputFormat: 'text',
+      })
+    );
+    expect(onExportMock).not.toHaveBeenCalled();
+
+    // Click Markdown (.md) format
+    fireEvent.click(markdownButton);
+    fireEvent.click(applyButton);
+
+    expect(onApplyMock).toHaveBeenCalledWith(
+      'ocr-pdf',
+      expect.objectContaining({
+        outputFormat: 'markdown',
+      })
+    );
+
+    unmount();
+  });
 });
+
