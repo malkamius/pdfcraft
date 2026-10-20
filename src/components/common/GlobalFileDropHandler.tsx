@@ -12,6 +12,11 @@ import {
   registerGlobalFileDropRouter,
 } from '@/lib/utils/file-tool-router';
 import { ToolSelectionModal } from './ToolSelectionModal';
+import {
+  getCliOpenFiles,
+  listenForOpenFiles,
+  createFilesFromFilePaths,
+} from '@/lib/tauri-bridge';
 
 export interface GlobalFileDropHandlerProps {
   locale: string;
@@ -62,6 +67,45 @@ export const GlobalFileDropHandler: React.FC<GlobalFileDropHandlerProps> = ({ lo
     },
     [openToolWithFiles]
   );
+
+  // Handle files passed via Windows "Open with" / command line / file association
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let isSubscribed = true;
+
+    const loadPathsAndRoute = async (paths: string[]) => {
+      if (!isSubscribed || !paths || paths.length === 0) return;
+      try {
+        const files = await createFilesFromFilePaths(paths);
+        if (isSubscribed && files.length > 0) {
+          handleRoutedFiles(files);
+        }
+      } catch (err) {
+        console.error('Failed to process opened files from Windows/CLI:', err);
+      }
+    };
+
+    // 1. Initial files passed when the application was launched via "Open with"
+    getCliOpenFiles().then((initialPaths) => {
+      if (isSubscribed && initialPaths && initialPaths.length > 0) {
+        loadPathsAndRoute(initialPaths);
+      }
+    });
+
+    // 2. Files passed while the application is already running
+    listenForOpenFiles((paths) => {
+      loadPathsAndRoute(paths);
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+
+    return () => {
+      isSubscribed = false;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [handleRoutedFiles]);
 
   // Register as the global file drop router for child components (like FileUploader)
   useEffect(() => {
@@ -120,7 +164,7 @@ export const GlobalFileDropHandler: React.FC<GlobalFileDropHandlerProps> = ({ lo
       locale={locale}
       onSelectTool={openToolWithFiles}
       onOpenInStudio={openStudioWithFiles}
-      showStudioOption={!isOnStudioPage}
+      showStudioOption={true}
     />
   );
 };

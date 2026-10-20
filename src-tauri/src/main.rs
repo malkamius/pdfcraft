@@ -3,7 +3,47 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
+
+pub struct CliFilesState(pub Mutex<Vec<String>>);
+
+fn extract_valid_file_paths(args: &[String], cwd: Option<&Path>) -> Vec<String> {
+    let mut files = Vec::new();
+    for arg in args {
+        let trimmed = arg.trim();
+        if trimmed.is_empty() || trimmed.starts_with('-') {
+            continue;
+        }
+        let clean_arg = trimmed.trim_matches('"').trim_matches('\'');
+        let path = PathBuf::from(clean_arg);
+        let resolved = if path.is_absolute() {
+            path
+        } else if let Some(base) = cwd {
+            base.join(&path)
+        } else if let Ok(base) = env::current_dir() {
+            base.join(&path)
+        } else {
+            path
+        };
+
+        if resolved.exists() && resolved.is_file() {
+            files.push(resolved.to_string_lossy().to_string());
+        }
+    }
+    files
+}
+
+#[tauri::command]
+fn get_cli_open_files(state: tauri::State<CliFilesState>) -> Vec<String> {
+    if let Ok(mut files) = state.0.lock() {
+        files.drain(..).collect()
+    } else {
+        vec![]
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SystemPrinter {
@@ -335,6 +375,13 @@ fn wait_for_loopback(port: u16, timeout: std::time::Duration) -> bool {
 }
 
 fn main() {
+    let cli_args: Vec<String> = env::args().collect();
+    let initial_files = if cli_args.len() > 1 {
+        extract_valid_file_paths(&cli_args[1..], None)
+    } else {
+        Vec::new()
+    };
+    let initial_files_state = CliFilesState(Mutex::new(initial_files));
     #[cfg(target_os = "linux")]
     {
         // Mitigate WebKitGTK / Mesa EGL display initialization failure under modern Wayland (EGL_BAD_PARAMETER)
@@ -384,6 +431,27 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            if argv.len() > 1 {
+                let files = extract_valid_file_paths(&argv[1..], Some(Path::new(&cwd)));
+                if !files.is_empty() {
+                    if let Some(state) = app.try_state::<CliFilesState>() {
+                        if let Ok(mut stored) = state.0.lock() {
+                            stored.extend(files.clone());
+                        }
+                    }
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.emit("open-files", files.clone());
+                    }
+                    let _ = app.emit("open-files", files);
+                }
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(
@@ -400,6 +468,7 @@ fn main() {
                 .build(),
         )
         .setup(move |app| {
+            app.manage(initial_files_state);
             if use_loopback {
                 if !wait_for_loopback(LOCALHOST_PORT, std::time::Duration::from_secs(5)) {
                     eprintln!(
@@ -426,7 +495,8 @@ fn main() {
             open_url,
             get_system_printers,
             print_pdf_file,
-            close_app
+            close_app,
+            get_cli_open_files
         ])
         .run(context)
         .expect("error while running tauri application");

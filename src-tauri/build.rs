@@ -14,6 +14,8 @@ fn strip_bom_from_capabilities() {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=icons/icon.ico");
+    println!("cargo:rerun-if-changed=tauri.conf.json");
     strip_bom_from_capabilities();
     // The production build serves the frontend from a loopback HTTP server instead of the
     // `tauri://localhost` custom protocol (WKWebView does not treat custom schemes as a
@@ -31,6 +33,7 @@ fn main() {
             "get_system_printers",
             "print_pdf_file",
             "close_app",
+            "get_cli_open_files",
         ]),
     );
     if let Err(error) = tauri_build::try_build(attributes) {

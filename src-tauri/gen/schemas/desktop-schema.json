@@ -2007,6 +2007,12 @@
           "markdownDescription": "Enables the close_app command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_cli_open_files command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-cli-open-files",
+          "markdownDescription": "Enables the get_cli_open_files command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_system_printers command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-system-printers",
@@ -2059,6 +2065,12 @@
           "type": "string",
           "const": "deny-close-app",
           "markdownDescription": "Denies the close_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_cli_open_files command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-cli-open-files",
+          "markdownDescription": "Denies the get_cli_open_files command without any pre-configured scope."
         },
         {
           "description": "Denies the get_system_printers command without any pre-configured scope.",

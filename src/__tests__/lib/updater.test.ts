@@ -15,6 +15,7 @@ import {
   saveUpdateSettings,
   shouldCheckUpdate,
   checkUpdate,
+  GITHUB_REPO,
 } from '@/lib/updater';
 import type { ReleaseAsset } from '@/types/updater';
 
@@ -186,6 +187,10 @@ describe('Software Updater', () => {
           delete process.env.NEXT_PUBLIC_DISABLE_UPDATE_CHECK;
         }
       }
+    });
+
+    it('points to malkamius/pdfcraft by default instead of upstream', () => {
+      expect(GITHUB_REPO).toBe('malkamius/pdfcraft');
     });
   });
 });

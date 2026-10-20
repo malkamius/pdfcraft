@@ -1,9 +1,9 @@
 import { renderHook } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { useSelectAllShortcut } from '@/hooks/useSelectAllShortcut';
 
 describe('useSelectAllShortcut Hook', () => {
-  let onSelectAll: ReturnType<typeof vi.fn>;
+  let onSelectAll: Mock<() => void>;
 
   beforeEach(() => {
     onSelectAll = vi.fn();

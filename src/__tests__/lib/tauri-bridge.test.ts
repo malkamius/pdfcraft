@@ -2,12 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   isTauri,
   getFiltersForFilename,
-  saveFile,
   saveBlobFile,
   writeFileBytes,
   getSystemPrinters,
   printPdfFile,
+  getCliOpenFiles,
+  createFilesFromFilePaths,
+  listenForOpenFiles,
 } from '@/lib/tauri-bridge';
+
+const mockInvoke = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: mockInvoke,
+}));
 
 describe('tauri-bridge', () => {
   beforeEach(() => {
@@ -127,6 +134,46 @@ describe('tauri-bridge', () => {
       const result = await printPdfFile(data);
       expect(result).toEqual({ success: true });
       expect(printSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('CLI and Open With helpers', () => {
+    it('returns empty array from getCliOpenFiles in browser mode', async () => {
+      const files = await getCliOpenFiles();
+      expect(files).toEqual([]);
+    });
+
+    it('returns empty unlisten function from listenForOpenFiles in browser mode', async () => {
+      const unlisten = await listenForOpenFiles(vi.fn());
+      expect(typeof unlisten).toBe('function');
+    });
+
+    it('converts file paths into File objects in createFilesFromFilePaths when in Tauri mode', async () => {
+      (window as any).__TAURI__ = {};
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'read_file') {
+          return Promise.resolve([37, 80, 68, 70]); // %PDF
+        }
+        return Promise.resolve([]);
+      });
+
+      const files = await createFilesFromFilePaths(['C:\\Users\\test\\sample.pdf']);
+      expect(files.length).toBe(1);
+      expect(files[0].name).toBe('sample.pdf');
+      expect(files[0].type).toBe('application/pdf');
+    });
+
+    it('fetches CLI open files when in Tauri mode', async () => {
+      (window as any).__TAURI__ = {};
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'get_cli_open_files') {
+          return Promise.resolve(['C:\\Users\\test\\sample.pdf']);
+        }
+        return Promise.resolve([]);
+      });
+
+      const files = await getCliOpenFiles();
+      expect(files).toEqual(['C:\\Users\\test\\sample.pdf']);
     });
   });
 });

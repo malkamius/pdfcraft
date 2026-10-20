@@ -20,6 +20,7 @@
     "allow-open-url",
     "allow-get-system-printers",
     "allow-print-pdf-file",
-    "allow-close-app"
+    "allow-close-app",
+    "allow-get-cli-open-files"
   ]
 }

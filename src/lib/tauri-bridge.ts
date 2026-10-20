@@ -1,3 +1,4 @@
+import { getMimeTypeForFilename } from './utils/file-tool-router';
 /**
  * Tauri Bridge
  * Provides a unified interface for file operations in both Tauri and Browser environments.
@@ -371,4 +372,61 @@ export async function closeAppWindow(): Promise<void> {
   }
 }
 
+/**
+ * Retrieves file paths passed on the command line / "Open with" at startup.
+ */
+export async function getCliOpenFiles(): Promise<string[]> {
+  if (isTauri()) {
+    try {
+      const invoke = await getTauriInvoke();
+      return (await invoke<string[]>('get_cli_open_files')) || [];
+    } catch (err) {
+      console.error('Failed to get CLI open files:', err);
+      return [];
+    }
+  }
+  return [];
+}
 
+/**
+ * Creates browser File objects from native filesystem paths using the Tauri bridge.
+ */
+export async function createFilesFromFilePaths(paths: string[]): Promise<File[]> {
+  const files: File[] = [];
+  for (const path of paths) {
+    try {
+      const bytes = await readFileBytes(path);
+      const name = path.split(/[/\\]/).pop() || 'document.pdf';
+      const mimeType = getMimeTypeForFilename(name);
+      const file = new File([bytes as unknown as BlobPart], name, { type: mimeType });
+      files.push(file);
+    } catch (err) {
+      console.error(`Failed to read file from path ${path}:`, err);
+    }
+  }
+  return files;
+}
+
+/**
+ * Listens for files opened via "Open with" or CLI while the app is already running.
+ */
+export async function listenForOpenFiles(callback: (paths: string[]) => void): Promise<() => void> {
+  if (!isTauri()) {
+    return () => {};
+  }
+
+  try {
+    const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+    const appWindow = getCurrentWebviewWindow();
+    const unlisten = await appWindow.listen<string[] | { paths: string[] }>('open-files', (event) => {
+      const paths = Array.isArray(event.payload) ? event.payload : event.payload?.paths;
+      if (paths && paths.length > 0) {
+        callback(paths);
+      }
+    });
+    return unlisten;
+  } catch (err) {
+    console.error('Failed to setup open-files listener:', err);
+    return () => {};
+  }
+}

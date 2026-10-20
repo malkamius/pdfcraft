@@ -1,11 +1,13 @@
-name: Fork Sync
+name: Fork Sync (Disabled)
 
 permissions:
   contents: write
 
+# Automatic sync is disabled to preserve custom fork changes.
+# Upstream changes will be reviewed and merged intentionally using AI/manual PRs.
 on:
-  schedule:
-    - cron: "0 0 * * *"
+  # schedule:
+  #   - cron: "0 0 * * *"
   workflow_dispatch:
 
 env:
@@ -15,7 +17,8 @@ jobs:
   sync_with_upstream:
     name: Sync with Upstream
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.fork }}
+    # Disabled to prevent automatic upstream overwrites
+    if: false
 
     steps:
       - name: Checkout target repo

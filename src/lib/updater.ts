@@ -7,7 +7,8 @@ import {
   UpdateSettings,
 } from '@/types/updater';
 
-export const GITHUB_REPO = 'PDFCraftTool/pdfcraft';
+export const GITHUB_REPO =
+  process.env.NEXT_PUBLIC_UPDATE_REPO || 'malkamius/pdfcraft';
 export const DEFAULT_CURRENT_VERSION =
   process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0';
 

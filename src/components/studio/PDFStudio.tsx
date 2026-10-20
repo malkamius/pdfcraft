@@ -53,6 +53,7 @@ import {
   filterFilesForTool,
   setPendingDroppedFiles,
   consumePendingDroppedFiles,
+  subscribePendingDroppedFiles,
   getMimeTypeForFilename,
 } from '@/lib/utils/file-tool-router';
 import {
@@ -516,6 +517,19 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
       void handleRecoverAutoBackup(pendingRecoveryId);
     }
   }, [handleAddFiles, handleRecoverAutoBackup]);
+
+  // Subscribe to pending dropped files routed to Studio while already mounted
+  useEffect(() => {
+    const handlePending = (payload: { targetToolSlug?: string }) => {
+      if (!payload.targetToolSlug || payload.targetToolSlug === 'studio') {
+        const files = consumePendingDroppedFiles('studio');
+        if (files && files.length > 0) {
+          handleAddFiles(files);
+        }
+      }
+    };
+    return subscribePendingDroppedFiles(handlePending);
+  }, [handleAddFiles]);
 
   const isClosingAppRef = useRef<boolean>(false);
 

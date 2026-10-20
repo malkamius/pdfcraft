@@ -5,6 +5,13 @@
 
 import type { ProcessInput, ProcessOutput, ProgressCallback } from '@/types/pdf';
 import { PDFErrorCode } from '@/types/pdf';
+import type {
+  PDFTextField,
+  PDFCheckBox,
+  PDFDropdown,
+  PDFRadioGroup,
+  PDFOptionList,
+} from 'pdf-lib';
 import { BasePDFProcessor } from '../processor';
 import { loadPdfLib } from '../loader';
 
@@ -263,7 +270,7 @@ export async function getFormFields(file: File): Promise<FormFieldInfo[]> {
       (pdfLib.PDFTextField && field instanceof pdfLib.PDFTextField) ||
       ctorName === 'PDFTextField'
     ) {
-      const textField = field as InstanceType<typeof pdfLib.PDFTextField>;
+      const textField = field as PDFTextField;
       let value = '';
       let multiline = false;
       try {
@@ -283,7 +290,7 @@ export async function getFormFields(file: File): Promise<FormFieldInfo[]> {
       (pdfLib.PDFCheckBox && field instanceof pdfLib.PDFCheckBox) ||
       ctorName === 'PDFCheckBox'
     ) {
-      const checkBox = field as InstanceType<typeof pdfLib.PDFCheckBox>;
+      const checkBox = field as PDFCheckBox;
       let value = false;
       try {
         value = Boolean(checkBox.isChecked());
@@ -297,7 +304,7 @@ export async function getFormFields(file: File): Promise<FormFieldInfo[]> {
       (pdfLib.PDFDropdown && field instanceof pdfLib.PDFDropdown) ||
       ctorName === 'PDFDropdown'
     ) {
-      const dropdown = field as InstanceType<typeof pdfLib.PDFDropdown>;
+      const dropdown = field as PDFDropdown;
       let options: string[] = [];
       let value = '';
       try {
@@ -318,7 +325,7 @@ export async function getFormFields(file: File): Promise<FormFieldInfo[]> {
       (pdfLib.PDFRadioGroup && field instanceof pdfLib.PDFRadioGroup) ||
       ctorName === 'PDFRadioGroup'
     ) {
-      const radioGroup = field as InstanceType<typeof pdfLib.PDFRadioGroup>;
+      const radioGroup = field as PDFRadioGroup;
       let options: string[] = [];
       let value = '';
       try {
@@ -338,7 +345,7 @@ export async function getFormFields(file: File): Promise<FormFieldInfo[]> {
       (pdfLib.PDFOptionList && field instanceof pdfLib.PDFOptionList) ||
       ctorName === 'PDFOptionList'
     ) {
-      const optionList = field as InstanceType<typeof pdfLib.PDFOptionList>;
+      const optionList = field as PDFOptionList;
       let options: string[] = [];
       let value = '';
       try {
