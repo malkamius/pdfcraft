@@ -48,11 +48,15 @@ jobs:
         run: npm ci
 
       # Build the project (generates static export in 'out' directory)
-      # Generate version tag based on date and short commit hash
+      # Generate version tag based on package.json version or git tag
       - name: Generate version info
         id: version
         run: |
-          VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
+          if [ -n "$GITHUB_REF_NAME" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION="v$(node -p "require('./package.json').version")"
+          fi
           BUILD_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT

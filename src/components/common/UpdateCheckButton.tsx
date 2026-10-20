@@ -7,6 +7,7 @@ import {
   checkUpdate,
   isVersionIgnored,
   shouldCheckUpdate,
+  getUpdateSettings,
   isUpdateSnoozedInSession,
   snoozeUpdateInSession,
   ignoreVersion,
@@ -55,8 +56,12 @@ export const UpdateCheckButton: React.FC<UpdateCheckButtonProps> = ({ className 
     let isMounted = true;
 
     const performBackgroundCheck = async () => {
+      const settings = getUpdateSettings();
+      if (!settings.autoCheck) {
+        return;
+      }
       const desktop = isTauri();
-      // In Tauri desktop, always verify update status on startup without 24h block;
+      // In Tauri desktop, verify update status on startup if autoCheck is enabled;
       // In browser, check if auto-check interval has elapsed.
       if (shouldCheckUpdate() || desktop) {
         try {

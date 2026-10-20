@@ -84,6 +84,8 @@ public/libreoffice-wasm/soffice.data.bin
 
 # Tauri / Cargo (local build output)
 src-tauri/target/
+src-tauri/tauri.dev.json
+src-tauri/.tauri.dev.json
 
 yarn.lock
 # Local utility scripts and release artifacts

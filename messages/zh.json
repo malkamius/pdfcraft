@@ -945,7 +945,7 @@
       "currentVersion": "当前版本",
       "released": "发布于",
       "releaseNotes": "更新日志",
-      "downloadPortable": "下载 Windows 便携版 (ZIP)",
+      "downloadPortable": "下载 Windows 便携版 (.exe / .zip)",
       "downloadInstaller": "下载 Windows 安装包 (.exe / .msi)",
       "downloadMac": "下载 macOS 安装包 (.dmg)",
       "downloadAppImage": "下载 Linux AppImage (便携版)",
@@ -964,7 +964,8 @@
       "openingBrowser": "正在打开系统浏览器...",
       "downloadStartedNotice": "已唤起浏览器开始下载！若未自动弹出，可点击右侧按钮复制直链并在浏览器中粘贴。",
       "downloadFailedNotice": "无法自动打开浏览器，请点击复制按钮手动在浏览器中粘贴下载。",
-      "linkCopied": "下载链接已复制到剪贴板！"
+      "linkCopied": "下载链接已复制到剪贴板！",
+      "autoCheckLabel": "启动时自动检查更新"
     }
   },
   "toolsPage": {
@@ -1302,8 +1303,8 @@
     "imageInput": "图片输入源",
     "fileInput": "通用文件输入源",
     "downloadPdf": "下载 PDF",
-    "downloadZip": "打包 ZIP 下载",
-    "outputCategory": "输出与导出 (Output & Export)",
+    "downloadZip": "打包为 ZIP 下载",
+    "outputCategory": "输出与导出",
     "noSavedWorkflows": "暂无已保存的工作流",
     "saveWorkflowHint": "创建并保存您的第一个工作流",
     "noFavorites": "暂无收藏的工作流",
@@ -1473,12 +1474,9 @@
     },
     "autoLayout": "一键整理布局",
     "duplicateNode": "复制节点",
-    "downloadZip": "打包为 ZIP 下载",
     "downloadIndividually": "分别下载各文件",
     "flowControl": "流程控制",
     "conditionGateway": "条件分支",
-    "downloadPdf": "下载 PDF",
-    "outputCategory": "输出与导出",
     "filenameLabel": "输出文件名"
   },
   "tools": {

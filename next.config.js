@@ -1,3 +1,4 @@
+import fs from 'fs';
 import createNextIntlPlugin from 'next-intl/plugin';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,21 +10,17 @@ const __dirname = path.dirname(__filename);
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 function resolveAppVersion() {
-  if (process.env.APP_VERSION) return process.env.APP_VERSION;
-  if (process.env.NEXT_PUBLIC_APP_VERSION) return process.env.NEXT_PUBLIC_APP_VERSION;
+  if (process.env.APP_VERSION) return process.env.APP_VERSION.replace(/^v/i, '');
+  if (process.env.NEXT_PUBLIC_APP_VERSION) return process.env.NEXT_PUBLIC_APP_VERSION.replace(/^v/i, '');
 
   try {
-    const gitHash = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .trim();
-    const commitDate = execSync('git log -1 --format=%cd --date=format:%Y.%m.%d', { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .trim();
-    if (gitHash && commitDate) {
-      return `v${commitDate}-${gitHash}`;
+    const pkgPath = path.join(__dirname, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg.version) return pkg.version;
     }
   } catch {
-    // Git not available or not a git repository
+    // fallback
   }
 
   return process.env.npm_package_version || '0.1.0';

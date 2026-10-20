@@ -12,6 +12,7 @@ const ALLOWED_TAGS = new Set([
   'table', 'thead', 'tbody', 'tr', 'th', 'td',
   'blockquote', 'pre', 'code',
   'hr', 'sub', 'sup', 'mark',
+  'del', 's', 'input',
 ]);
 
 // Allowed attributes per tag
@@ -21,6 +22,7 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   'img': new Set(['src', 'alt', 'width', 'height']),
   'td': new Set(['colspan', 'rowspan']),
   'th': new Set(['colspan', 'rowspan', 'scope']),
+  'input': new Set(['type', 'checked', 'disabled']),
 };
 
 // Dangerous URL protocols
@@ -43,6 +45,9 @@ function isSafeUrl(url: string): boolean {
 export function sanitizeHtml(html: string): string {
   // Process the HTML: keep allowed tags with allowed attributes, strip the rest
   let result = html;
+
+  // Step 0: Remove dangerous tags and their contents completely
+  result = result.replace(/<(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, '');
 
   // Step 1: Replace disallowed tags but keep their content
   // Match any HTML tag
@@ -76,6 +81,10 @@ export function sanitizeHtml(html: string): string {
       if (globalAttrs.has(attrName) || tagAttrs.has(attrName)) {
         // Validate URLs
         if ((attrName === 'href' || attrName === 'src') && !isSafeUrl(attrValue)) {
+          continue;
+        }
+        // Only allow checkbox input types to prevent arbitrary input forms
+        if (tag === 'input' && attrName === 'type' && attrValue.toLowerCase() !== 'checkbox') {
           continue;
         }
         cleanAttrs.push(`${attrName}="${attrValue.replace(/"/g, '&quot;')}"`);

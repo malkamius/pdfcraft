@@ -18,8 +18,9 @@ import {
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { UpdateCheckResult, ReleaseAsset } from '@/types/updater';
-import { ignoreVersion, GITHUB_REPO } from '@/lib/updater';
+import { ignoreVersion, GITHUB_REPO, getUpdateSettings, setAutoCheck } from '@/lib/updater';
 import { openExternalUrl } from '@/lib/tauri-bridge';
+import { MarkdownViewer } from '@/components/common/MarkdownViewer';
 
 export interface UpdateModalProps {
   isOpen: boolean;
@@ -39,6 +40,12 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   const t = useTranslations('common');
   const [showAllAssets, setShowAllAssets] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [autoCheck, setAutoCheckState] = useState(() => getUpdateSettings().autoCheck);
+
+  const handleToggleAutoCheck = (checked: boolean) => {
+    setAutoCheckState(checked);
+    setAutoCheck(checked);
+  };
   const [downloadNotice, setDownloadNotice] = useState<{
     status: 'opening' | 'success' | 'failed';
     text: string;
@@ -215,7 +222,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
         {/* State: Up to date */}
         {!loading && !result?.error && !result?.hasUpdate && (
-          <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
+          <div className="flex flex-col items-center justify-center py-6 text-center space-y-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="h-6 w-6" />
             </div>
@@ -231,6 +238,16 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 )}
               </p>
             </div>
+            {result?.release?.body && (
+              <div className="w-full text-left space-y-2 pt-2">
+                <div className="text-xs font-semibold uppercase tracking-wider text-[hsl(var(--color-muted-foreground))]">
+                  {getMsg('releaseNotes', 'Release Notes')}
+                </div>
+                <div className="max-h-56 overflow-y-auto rounded-lg border border-[hsl(var(--color-border))] bg-[hsl(var(--color-muted))/0.3] p-3.5">
+                  <MarkdownViewer content={result.release.body} />
+                </div>
+              </div>
+            )}
             <div className="pt-2">
               <Button variant="primary" size="sm" onClick={onClose}>
                 {getMsg('close', 'Close')}
@@ -275,8 +292,8 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 <div className="text-xs font-semibold uppercase tracking-wider text-[hsl(var(--color-muted-foreground))]">
                   {getMsg('releaseNotes', 'Release Notes')}
                 </div>
-                <div className="max-h-48 overflow-y-auto rounded-lg border border-[hsl(var(--color-border))] bg-[hsl(var(--color-muted))/0.3] p-3 text-xs text-[hsl(var(--color-foreground))] whitespace-pre-wrap font-sans leading-relaxed">
-                  {result.release.body}
+                <div className="max-h-60 overflow-y-auto rounded-lg border border-[hsl(var(--color-border))] bg-[hsl(var(--color-muted))/0.3] p-3.5">
+                  <MarkdownViewer content={result.release.body} />
                 </div>
               </div>
             )}
@@ -386,7 +403,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               )}
 
               {/* Toggle all assets */}
-              {result.matchedAssets.all.length > 0 && (
+              {result.matchedAssets?.all && result.matchedAssets.all.length > 0 && (
                 <div className="pt-1">
                   <button
                     type="button"
@@ -470,6 +487,19 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Automatic update check toggle */}
+        <div className="pt-2 border-t border-[hsl(var(--color-border))/0.6] flex items-center justify-between text-xs">
+          <label className="inline-flex items-center gap-2 cursor-pointer select-none text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-foreground))] transition-colors">
+            <input
+              type="checkbox"
+              checked={autoCheck}
+              onChange={(e) => handleToggleAutoCheck(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-[hsl(var(--color-border))] text-[hsl(var(--color-primary))] focus:ring-[hsl(var(--color-primary))]"
+            />
+            <span>{getMsg('autoCheckLabel', 'Automatically check for updates')}</span>
+          </label>
+        </div>
       </div>
     </Modal>
   );

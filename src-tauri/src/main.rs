@@ -354,7 +354,31 @@ fn print_pdf_file(data: Vec<u8>, printer_name: Option<String>) -> Result<(), Str
 /// (Emscripten pthreads) needs for the Office -> PDF tools. Serving the same assets
 /// over `http://127.0.0.1:<port>` gives the page a trustworthy origin, so the
 /// isolation headers actually take effect.
-const LOCALHOST_PORT: u16 = 9527;
+const DEFAULT_LOCALHOST_PORT: u16 = 9527;
+
+/// Checks if a TCP port on 127.0.0.1 is available for binding.
+fn is_port_available(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Finds the next available loopback port on 127.0.0.1.
+/// If `preferred_port` is available, returns it.
+/// If `preferred_port` is in use, sequentially tries the next free port (port + 1, port + 2, ...).
+fn find_available_port(preferred_port: u16) -> u16 {
+    for offset in 0..1000 {
+        let candidate = preferred_port.saturating_add(offset);
+        if is_port_available(candidate) {
+            if candidate != preferred_port {
+                eprintln!(
+                    "pdfcraft: port {preferred_port} is in use, using next available port {candidate}"
+                );
+            }
+            return candidate;
+        }
+    }
+
+    preferred_port
+}
 
 /// Waits until the loopback asset server accepts connections.
 ///
@@ -418,6 +442,11 @@ fn main() {
     }
 
     let use_loopback = !cfg!(dev);
+    let preferred_port: u16 = env::var("PDFCRAFT_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_LOCALHOST_PORT);
+    let localhost_port = find_available_port(preferred_port);
 
     let mut context = tauri::generate_context!();
 
@@ -455,7 +484,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(
-            tauri_plugin_localhost::Builder::new(LOCALHOST_PORT)
+            tauri_plugin_localhost::Builder::new(localhost_port)
                 .host("127.0.0.1")
                 .on_request(|_request, response| {
                     // `app.security.headers` only applies to the custom protocol, so the
@@ -470,15 +499,15 @@ fn main() {
         .setup(move |app| {
             app.manage(initial_files_state);
             if use_loopback {
-                if !wait_for_loopback(LOCALHOST_PORT, std::time::Duration::from_secs(5)) {
+                if !wait_for_loopback(localhost_port, std::time::Duration::from_secs(5)) {
                     eprintln!(
-                        "pdfcraft: loopback asset server did not come up on port {LOCALHOST_PORT}"
+                        "pdfcraft: loopback asset server did not come up on port {localhost_port}"
                     );
                 }
                 let mut window_config = app.config().app.windows[0].clone();
                 window_config.create = false;
                 window_config.url = tauri::WebviewUrl::External(
-                    format!("http://127.0.0.1:{LOCALHOST_PORT}/")
+                    format!("http://127.0.0.1:{localhost_port}/")
                         .parse()
                         .expect("loopback url is valid"),
                 );

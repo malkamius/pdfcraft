@@ -10,14 +10,37 @@ import {
 export const GITHUB_REPO =
   process.env.NEXT_PUBLIC_UPDATE_REPO || 'malkamius/pdfcraft';
 export const DEFAULT_CURRENT_VERSION =
-  process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0';
+  process.env.NEXT_PUBLIC_APP_VERSION || '0.1.2';
 
 const STORAGE_KEY = 'pdfcraft_update_settings';
 const DEFAULT_CHECK_INTERVAL_HOURS = 24;
 
 /**
+ * Resolves the running app version at runtime.
+ * In desktop mode (Tauri), queries the runtime Tauri application version.
+ * Falls back to DEFAULT_CURRENT_VERSION in browser or if Tauri is unavailable.
+ */
+export async function getRuntimeAppVersion(): Promise<string> {
+  if (
+    typeof window !== 'undefined' &&
+    ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
+  ) {
+    try {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      const ver = await getVersion();
+      if (ver) {
+        return ver.trim();
+      }
+    } catch {
+      // Fallback to configured build version
+    }
+  }
+  return DEFAULT_CURRENT_VERSION;
+}
+
+/**
  * Parses version numbers or tag strings into numeric components for comparison.
- * Handles both SemVer (e.g. 0.1.0, 1.2.3) and Date-based tags (e.g. 2026.09.10-abc, v2026.09.10).
+ * Handles SemVer (e.g. 0.1.1, 0.1.2, 1.2.3) and legacy date-based tags (e.g. 2026.10.19-abc, v2026.09.10).
  */
 export function parseVersionParts(version: string): { numbers: number[]; raw: string } {
   const clean = version.trim().replace(/^v/i, '');
@@ -36,7 +59,7 @@ export function parseVersionParts(version: string): { numbers: number[]; raw: st
 /**
  * Compares two versions.
  * Returns `true` if `latestVersion` is strictly newer than `currentVersion`.
- * Handles both SemVer (0.1.0, 1.2.3) and Date-based tags (e.g. 2026.09.12-6178132, v2026.09.10).
+ * Handles SemVer (0.1.1, 0.1.2) as well as legacy date-based tags (v2026.10.19).
  */
 export function compareVersions(
   currentVersion: string,
@@ -58,7 +81,34 @@ export function compareVersions(
     return true;
   }
 
-  // Compare numerical segments
+  const curIsDateBased = (cur.numbers[0] || 0) >= 2000;
+  const latIsDateBased = (lat.numbers[0] || 0) >= 2000;
+
+  // Migration from legacy date-based tag (e.g. v2026.10.19-e616a0c) to SemVer (e.g. v0.1.2)
+  if (curIsDateBased && !latIsDateBased) {
+    // Current is legacy date format, remote is SemVer.
+    // Check if the release timestamp is newer than the date in the current version tag or build date
+    const buildDateStr = process.env.NEXT_PUBLIC_BUILD_DATE;
+    const curDate = new Date(Date.UTC(cur.numbers[0], (cur.numbers[1] || 1) - 1, cur.numbers[2] || 1));
+    const curTime = !Number.isNaN(curDate.getTime()) ? curDate.getTime() : 0;
+    const buildTime = buildDateStr ? new Date(buildDateStr).getTime() : 0;
+    const effectiveCurTime = Math.max(curTime, Number.isNaN(buildTime) ? 0 : buildTime);
+
+    if (releasePublishedAt && effectiveCurTime > 0) {
+      const releaseTime = new Date(releasePublishedAt).getTime();
+      if (!Number.isNaN(releaseTime)) {
+        return releaseTime > effectiveCurTime;
+      }
+    }
+    // If no verifiable release timestamp, treat SemVer release as an update
+    return true;
+  }
+
+  if (!curIsDateBased && latIsDateBased) {
+    return true;
+  }
+
+  // Compare numerical segments (SemVer vs SemVer, or Date-based vs Date-based)
   const maxLen = Math.max(cur.numbers.length, lat.numbers.length);
   for (let i = 0; i < maxLen; i++) {
     const curNum = cur.numbers[i] || 0;
@@ -67,7 +117,7 @@ export function compareVersions(
     if (latNum < curNum) return false;
   }
 
-  // If numerical segments match (e.g. both built on 2026.09.12) but raw tags differ:
+  // If numerical segments match but raw tags differ:
   if (cur.raw !== lat.raw) {
     const buildDateStr = process.env.NEXT_PUBLIC_BUILD_DATE;
     if (releasePublishedAt && buildDateStr) {
@@ -77,8 +127,6 @@ export function compareVersions(
         return releaseTime > buildTime;
       }
     }
-    // If we have different commit hashes on the same date and no verifiable timestamp,
-    // treat differing build hashes as an update opportunity
     return true;
   }
 
@@ -87,11 +135,12 @@ export function compareVersions(
 
 /**
  * Categorizes a release asset by filename.
+ * Accurately detects standalone portable .exe as well as .zip portable bundles and .msi installers.
  */
 export function categorizeAsset(filename: string): AssetPlatformType {
   const lower = filename.toLowerCase();
 
-  if (lower.includes('portable') && lower.endsWith('.zip')) {
+  if (lower.includes('portable') && (lower.endsWith('.zip') || lower.endsWith('.exe'))) {
     return 'windows-portable';
   }
   if (lower.endsWith('.msi') || (lower.endsWith('.exe') && !lower.includes('portable'))) {
@@ -153,12 +202,12 @@ export function matchPlatformAssets(
 
   switch (platform) {
     case 'windows':
-      primary = validAssets.find((a) => a.platformType === 'windows-portable') ||
-                validAssets.find((a) => a.platformType === 'windows-installer');
+      primary = validAssets.find((a) => a.platformType === 'windows-installer') ||
+                validAssets.find((a) => a.platformType === 'windows-portable');
       secondary = validAssets.find(
         (a) =>
           a !== primary &&
-          (a.platformType === 'windows-installer' || a.platformType === 'windows-portable')
+          (a.platformType === 'windows-portable' || a.platformType === 'windows-installer')
       );
       break;
     case 'macos':
@@ -237,6 +286,15 @@ export function saveUpdateSettings(settings: UpdateSettings): void {
 }
 
 /**
+ * Sets automatic checking for updates on/off.
+ */
+export function setAutoCheck(enabled: boolean): void {
+  const settings = getUpdateSettings();
+  settings.autoCheck = enabled;
+  saveUpdateSettings(settings);
+}
+
+/**
  * Checks whether it's time to run an automatic update check.
  */
 export function shouldCheckUpdate(): boolean {
@@ -299,6 +357,7 @@ export function snoozeUpdateInSession(version: string): void {
 
 export const GITHUB_RELEASE_ENDPOINTS = [
   `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+  `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=1`,
   `https://gh-proxy.com/https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
   `https://mirror.ghproxy.com/https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
 ];
@@ -312,7 +371,7 @@ export async function fetchLatestRelease(): Promise<ReleaseInfo> {
 
   for (const endpoint of GITHUB_RELEASE_ENDPOINTS) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
     try {
       const response = await fetch(endpoint, {
@@ -326,7 +385,13 @@ export async function fetchLatestRelease(): Promise<ReleaseInfo> {
         throw new Error(`API returned HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      let data = await response.json();
+      if (Array.isArray(data)) {
+        if (data.length === 0) {
+          throw new Error('No releases found in repository');
+        }
+        data = data[0];
+      }
 
       const assets: ReleaseAsset[] = Array.isArray(data.assets)
         ? data.assets.map((asset: { name: string; size: number; browser_download_url: string }) => ({
@@ -364,9 +429,9 @@ export interface CheckUpdateOptions {
 }
 
 /**
- * Performs an in-app check for software updates.
+ * Performs a check for software updates against the repository releases.
  *
- * @param optionsOrForce If true or options.force is true, skips interval check and queries GitHub immediately.
+ * @param optionsOrForce If true or options.force is true, skips interval and auto-check suppression and queries GitHub immediately.
  */
 export async function checkUpdate(
   optionsOrForce: boolean | CheckUpdateOptions = false
@@ -376,7 +441,19 @@ export async function checkUpdate(
       ? { force: optionsOrForce }
       : optionsOrForce;
 
-  const currentVersion = DEFAULT_CURRENT_VERSION;
+  const currentVersion = await getRuntimeAppVersion();
+  const settings = getUpdateSettings();
+
+  // If automatic checking is disabled and this is a background check, skip
+  if (!options.force && !settings.autoCheck) {
+    return {
+      hasUpdate: false,
+      currentVersion,
+      latestVersion: currentVersion,
+      matchedAssets: { all: [] },
+    };
+  }
+
   const shouldBypassInterval = Boolean(options.force || options.isDesktop);
 
   if (process.env.NEXT_PUBLIC_DISABLE_UPDATE_CHECK === 'true' && !options.force) {
@@ -403,7 +480,6 @@ export async function checkUpdate(
     const hasUpdate = compareVersions(currentVersion, latestVersion, release.publishedAt);
 
     // Record check timestamp
-    const settings = getUpdateSettings();
     settings.lastCheckedTimestamp = Date.now();
     saveUpdateSettings(settings);
 

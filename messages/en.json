@@ -945,7 +945,7 @@
       "currentVersion": "Current Version",
       "released": "Released",
       "releaseNotes": "Release Notes",
-      "downloadPortable": "Download Windows Portable (ZIP)",
+      "downloadPortable": "Download Windows Portable (.exe / .zip)",
       "downloadInstaller": "Download Windows Installer (.exe / .msi)",
       "downloadMac": "Download macOS (.dmg)",
       "downloadAppImage": "Download Linux AppImage (Portable)",
@@ -964,7 +964,8 @@
       "openingBrowser": "Opening default browser...",
       "downloadStartedNotice": "Download opened in your browser! If not started, click the copy button to paste into your browser.",
       "downloadFailedNotice": "Could not open browser automatically. Please click copy to paste link manually in your browser.",
-      "linkCopied": "Download link copied to clipboard!"
+      "linkCopied": "Download link copied to clipboard!",
+      "autoCheckLabel": "Automatically check for updates"
     }
   },
   "toolsPage": {
@@ -1302,7 +1303,7 @@
     "imageInput": "Image Input",
     "fileInput": "File Input",
     "downloadPdf": "Download PDF",
-    "downloadZip": "Download ZIP",
+    "downloadZip": "Download as ZIP",
     "outputCategory": "Output & Export",
     "noSavedWorkflows": "No saved workflows yet",
     "saveWorkflowHint": "Create and save your first workflow",
@@ -1473,12 +1474,9 @@
     },
     "autoLayout": "Auto Layout",
     "duplicateNode": "Duplicate Node",
-    "downloadZip": "Download as ZIP",
     "downloadIndividually": "Download files individually",
     "flowControl": "Flow Control",
     "conditionGateway": "Condition Gateway",
-    "downloadPdf": "Download PDF",
-    "outputCategory": "Output & Export",
     "filenameLabel": "Output Filename"
   },
   "tools": {

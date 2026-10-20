@@ -13,10 +13,31 @@ fn strip_bom_from_capabilities() {
     }
 }
 
+fn clean_stale_resource_cache() {
+    if let Ok(out_dir) = std::env::var("OUT_DIR") {
+        let out_path = std::path::Path::new(&out_dir);
+        // Remove stale resource.lib/resource.rc in OUT_DIR so tauri-build/embed-resource always rebuilds them
+        let _ = std::fs::remove_file(out_path.join("resource.lib"));
+        let _ = std::fs::remove_file(out_path.join("resource.rc"));
+        let _ = std::fs::remove_file(out_path.join("resource.res"));
+
+        // Remove cached bundle icon (target/<profile>/resources/icon.ico) so WiX re-copies the new icon
+        if let Some(target_profile_dir) = out_path.ancestors().nth(3) {
+            let cached_ico = target_profile_dir.join("resources").join("icon.ico");
+            if cached_ico.exists() {
+                let _ = std::fs::remove_file(cached_ico);
+            }
+        }
+    }
+}
+
 fn main() {
+    println!("cargo:rerun-if-changed=icons");
     println!("cargo:rerun-if-changed=icons/icon.ico");
+    println!("cargo:rerun-if-changed=icons/icon.png");
     println!("cargo:rerun-if-changed=tauri.conf.json");
     strip_bom_from_capabilities();
+    clean_stale_resource_cache();
     // The production build serves the frontend from a loopback HTTP server instead of the
     // `tauri://localhost` custom protocol (WKWebView does not treat custom schemes as a
     // secure context, which breaks Cross-Origin Isolation / SharedArrayBuffer). That origin
