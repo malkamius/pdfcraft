@@ -13,7 +13,7 @@
  * - GitHub Pages: Serves decompressed originals (but lacks COOP/COEP headers)
  */
 
-import { createReadStream, createWriteStream, readdirSync, existsSync, statSync } from 'fs';
+import { createReadStream, createWriteStream, readdirSync, existsSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { createGunzip } from 'zlib';
 import { pipeline } from 'stream/promises';
@@ -92,6 +92,26 @@ async function main() {
     }
 
     console.log('[postbuild] WASM decompression complete.');
+
+    const isDesktop =
+        process.env.TAURI_ENV === 'true' ||
+        process.env.BUILDING_TAURI === 'true' ||
+        Boolean(process.env.TAURI_ENV_PLATFORM || process.env.TAURI_PLATFORM);
+
+    if (isDesktop && targetArg !== 'public') {
+        console.log('[postbuild] Desktop/Tauri environment detected: pruning redundant .bin.gz files from out/ to speed up Tauri embedding...');
+        for (const gzFile of files) {
+            const gzPath = join(WASM_DIR, gzFile);
+            try {
+                if (existsSync(gzPath)) {
+                    unlinkSync(gzPath);
+                    console.log(`[postbuild]   Pruned redundant ${gzFile}`);
+                }
+            } catch (err) {
+                console.error(`[postbuild]   Failed to prune ${gzFile}:`, err.message);
+            }
+        }
+    }
 }
 
 main().catch(err => {

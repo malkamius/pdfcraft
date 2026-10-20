@@ -6,6 +6,10 @@ import {
   peekPendingDroppedFiles,
   clearPendingDroppedFiles,
 } from '@/lib/utils/file-tool-router';
+import {
+  DEFAULT_PDF_TOOL_STORAGE_KEY,
+  setStudioDefaultPdfTool,
+} from '@/lib/storage/default-tool';
 import * as tauriBridge from '@/lib/tauri-bridge';
 
 const mockPush = vi.fn();
@@ -23,6 +27,7 @@ describe('GlobalFileDropHandler - Open With & File Routing', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     clearPendingDroppedFiles();
     mockPathname = '/en';
     openFilesCallback = null;
@@ -154,5 +159,126 @@ describe('GlobalFileDropHandler - Open With & File Routing', () => {
     expect(screen.getByText('screenshot.png')).toBeInTheDocument();
     expect(screen.getByTestId('select-tool-png-to-pdf')).toBeInTheDocument();
     expect(screen.getByTestId('select-tool-image-to-pdf')).toBeInTheDocument();
+  });
+
+  it('routes directly to PDF Studio when isStudioDefaultPdfTool is enabled and file is opened via Open With at cold start', async () => {
+    setStudioDefaultPdfTool(true);
+
+    const dummyPdf = new File(['%PDF-1.4 test'], 'contract.pdf', {
+      type: 'application/pdf',
+    });
+
+    vi.spyOn(tauriBridge, 'getCliOpenFiles').mockResolvedValue(['C:\\Users\\test\\contract.pdf']);
+    vi.spyOn(tauriBridge, 'createFilesFromFilePaths').mockResolvedValue([dummyPdf]);
+
+    render(<GlobalFileDropHandler locale="en" />);
+
+    // Should NOT show tool selection modal
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/en/studio');
+    });
+
+    expect(screen.queryByTestId('tool-selection-modal')).not.toBeInTheDocument();
+    const pending = peekPendingDroppedFiles();
+    expect(pending?.targetToolSlug).toBe('studio');
+    expect(pending?.files).toEqual([dummyPdf]);
+  });
+
+  it('routes directly to PDF Studio when isStudioDefaultPdfTool is enabled and file is opened via Open With hot start', async () => {
+    setStudioDefaultPdfTool(true);
+
+    const dummyPdf = new File(['%PDF-1.4 test'], 'monthly.pdf', {
+      type: 'application/pdf',
+    });
+
+    vi.spyOn(tauriBridge, 'getCliOpenFiles').mockResolvedValue([]);
+    vi.spyOn(tauriBridge, 'createFilesFromFilePaths').mockResolvedValue([dummyPdf]);
+
+    render(<GlobalFileDropHandler locale="en" />);
+
+    expect(openFilesCallback).not.toBeNull();
+    await openFilesCallback!(['C:\\Users\\test\\monthly.pdf']);
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/en/studio');
+    });
+
+    expect(screen.queryByTestId('tool-selection-modal')).not.toBeInTheDocument();
+  });
+
+  it('always shows the tool list modal when a PDF is dropped onto the tool selection page even if Studio is default', async () => {
+    setStudioDefaultPdfTool(true);
+    mockPathname = '/en'; // Tool selection page
+
+    vi.spyOn(tauriBridge, 'getCliOpenFiles').mockResolvedValue([]);
+
+    render(<GlobalFileDropHandler locale="en" />);
+
+    const dummyPdf = new File(['%PDF-1.4 test'], 'presentation.pdf', {
+      type: 'application/pdf',
+    });
+
+    fireEvent.drop(window, {
+      dataTransfer: {
+        files: [dummyPdf],
+      },
+    });
+
+    // On the tool selection page, user must always see the compatible tool list
+    await waitFor(() => {
+      expect(screen.getByTestId('tool-selection-modal')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('presentation.pdf')).toBeInTheDocument();
+    expect(screen.getByTestId('select-tool-studio')).toBeInTheDocument();
+    expect(screen.getByTestId('select-tool-merge-pdf')).toBeInTheDocument();
+  });
+
+  it('routes directly to PDF Studio when dropped on a page outside the tool selection page if Studio is default', async () => {
+    setStudioDefaultPdfTool(true);
+    mockPathname = '/en/faq'; // Page outside tool selection page
+
+    vi.spyOn(tauriBridge, 'getCliOpenFiles').mockResolvedValue([]);
+
+    render(<GlobalFileDropHandler locale="en" />);
+
+    const dummyPdf = new File(['%PDF-1.4 test'], 'notes.pdf', {
+      type: 'application/pdf',
+    });
+
+    fireEvent.drop(window, {
+      dataTransfer: {
+        files: [dummyPdf],
+      },
+    });
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/en/studio');
+    });
+
+    expect(screen.queryByTestId('tool-selection-modal')).not.toBeInTheDocument();
+  });
+
+  it('persists default tool preference when checking the checkbox in ToolSelectionModal', async () => {
+    mockPathname = '/en';
+    const dummyPdf = new File(['%PDF-1.4 test'], 'paper.pdf', {
+      type: 'application/pdf',
+    });
+
+    vi.spyOn(tauriBridge, 'getCliOpenFiles').mockResolvedValue(['C:\\Users\\test\\paper.pdf']);
+    vi.spyOn(tauriBridge, 'createFilesFromFilePaths').mockResolvedValue([dummyPdf]);
+
+    render(<GlobalFileDropHandler locale="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tool-selection-modal')).toBeInTheDocument();
+    });
+
+    const checkbox = screen.getByTestId('modal-default-pdf-checkbox') as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+    expect(localStorage.getItem(DEFAULT_PDF_TOOL_STORAGE_KEY)).toBe('studio');
   });
 });

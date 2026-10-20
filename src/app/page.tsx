@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { locales, defaultLocale } from '@/lib/i18n/config';
+import { isStudioDefaultStartup } from '@/lib/storage/default-tool';
 
 // Root page handles client-side redirection based on browser language
 export default function RootPage() {
@@ -13,13 +14,14 @@ export default function RootPage() {
       // Get browser language
       const browserLang = navigator.language;
       const primaryLang = browserLang.split('-')[0];
+      const targetLang = (locales as readonly string[]).includes(primaryLang) ? primaryLang : defaultLocale;
 
-      // Check if the language is supported
-      if ((locales as readonly string[]).includes(primaryLang)) {
-        router.replace(`/${primaryLang}`);
-      } else {
-        router.replace(`/${defaultLocale}`);
+      if (isStudioDefaultStartup()) {
+        router.replace(`/${targetLang}/studio`);
+        return;
       }
+
+      router.replace(`/${targetLang}`);
     } catch (error) {
       // Fallback to default locale if anything goes wrong
       router.replace(`/${defaultLocale}`);

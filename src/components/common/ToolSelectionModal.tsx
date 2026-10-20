@@ -6,6 +6,7 @@ import type { Tool } from '@/types/tool';
 import { getToolIcon } from '@/config/icons';
 import { getToolContent, type Locale } from '@/config/tool-content';
 import { filterFilesForTool, getFileExtensions, isPdfFile } from '@/lib/utils/file-tool-router';
+import { isStudioDefaultPdfTool, setStudioDefaultPdfTool } from '@/lib/storage/default-tool';
 
 export interface ToolSelectionModalProps {
   isOpen: boolean;
@@ -36,12 +37,14 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({
   showStudioOption = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [alwaysOpenInStudio, setAlwaysOpenInStudio] = useState<boolean>(() => isStudioDefaultPdfTool());
   const validLocale = ((locale as string) || 'en') as Locale;
   const isZh = validLocale.toLowerCase().startsWith('zh');
 
   useEffect(() => {
     if (isOpen) {
       setSearchQuery('');
+      setAlwaysOpenInStudio(isStudioDefaultPdfTool());
     }
   }, [isOpen, files]);
 
@@ -185,34 +188,61 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-2.5">
           {/* Optional Open in PDF Studio card for PDF files */}
           {showStudioOption && onOpenInStudio && pdfFiles.length > 0 && !searchQuery && (
-            <button
-              type="button"
-              data-testid="select-tool-studio"
-              onClick={() => onOpenInStudio(pdfFiles)}
-              className="w-full p-4 rounded-2xl border-2 border-[hsl(var(--color-primary)/0.4)] bg-gradient-to-r from-[hsl(var(--color-primary)/0.1)] to-[hsl(var(--color-accent)/0.08)] hover:border-[hsl(var(--color-primary))] text-left transition-all flex items-center justify-between gap-4 group"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-11 h-11 rounded-xl bg-[hsl(var(--color-primary))] text-white flex items-center justify-center shrink-0 shadow-md">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-[hsl(var(--color-foreground))]">
-                      {isZh ? '在 PDF Studio 工作台中打开' : 'Open in PDF Studio'}
-                    </span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-[hsl(var(--color-primary))] text-white">
-                      {isZh ? '推荐工作台' : 'Workspace'}
-                    </span>
+            <div className="space-y-2">
+              <button
+                type="button"
+                data-testid="select-tool-studio"
+                onClick={() => {
+                  if (alwaysOpenInStudio) {
+                    setStudioDefaultPdfTool(true);
+                  }
+                  onOpenInStudio(pdfFiles);
+                }}
+                className="w-full p-4 rounded-2xl border-2 border-[hsl(var(--color-primary)/0.4)] bg-gradient-to-r from-[hsl(var(--color-primary)/0.1)] to-[hsl(var(--color-accent)/0.08)] hover:border-[hsl(var(--color-primary))] text-left transition-all flex items-center justify-between gap-4 group"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-[hsl(var(--color-primary))] text-white flex items-center justify-center shrink-0 shadow-md">
+                    <Sparkles className="w-5 h-5" />
                   </div>
-                  <p className="text-xs text-[hsl(var(--color-muted-foreground))] truncate mt-0.5">
-                    {isZh
-                      ? '在单一视图中就地浏览、旋转、加水印、压缩、签名与管理页面'
-                      : 'View, rotate, watermark, compress, sign, and organize in a single workspace'}
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-[hsl(var(--color-foreground))]">
+                        {isZh ? '在 PDF Studio 工作台中打开' : 'Open in PDF Studio'}
+                      </span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-[hsl(var(--color-primary))] text-white">
+                        {isZh ? '推荐工作台' : 'Workspace'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[hsl(var(--color-muted-foreground))] truncate mt-0.5">
+                      {isZh
+                        ? '在单一视图中就地浏览、旋转、加水印、压缩、签名与管理页面'
+                        : 'View, rotate, watermark, compress, sign, and organize in a single workspace'}
+                    </p>
+                  </div>
                 </div>
+                <ArrowRight className="w-4 h-4 text-[hsl(var(--color-primary))] group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+
+              <div className="flex items-center justify-between px-1">
+                <label className="flex items-center gap-2 text-xs text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-foreground))] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    data-testid="modal-default-pdf-checkbox"
+                    checked={alwaysOpenInStudio}
+                    onChange={(e) => {
+                      setAlwaysOpenInStudio(e.target.checked);
+                      setStudioDefaultPdfTool(e.target.checked);
+                    }}
+                    className="rounded border-[hsl(var(--color-border))] text-[hsl(var(--color-primary))] focus:ring-[hsl(var(--color-primary))]"
+                  />
+                  <span>
+                    {isZh
+                      ? '设为默认工具（从外部/其他页面打开 PDF 时直接进入 Studio）'
+                      : 'Set as default tool (opens Studio directly from external/other pages)'}
+                  </span>
+                </label>
               </div>
-              <ArrowRight className="w-4 h-4 text-[hsl(var(--color-primary))] group-hover:translate-x-1 transition-transform shrink-0" />
-            </button>
+            </div>
           )}
 
           {filteredTools.length === 0 ? (

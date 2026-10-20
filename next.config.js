@@ -127,11 +127,6 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
 
-  // ESLint configuration
-  eslint: {
-    // Run ESLint during builds
-    ignoreDuringBuilds: false,
-  },
 
   // Compiler options for performance
   compiler: {
@@ -144,6 +139,10 @@ const nextConfig = {
   // Headers configuration for caching
   // Note: These headers are applied when running with `next start`
   // For static export, configure headers in your hosting platform
+  // Headers configuration for local dev server
+  // Note: For static export (`output: 'export'`), Next.js does not serve custom headers in production.
+  // In development (`next dev`), these headers provide COOP/COEP for SharedArrayBuffer & LibreOffice WASM.
+  ...(process.env.NODE_ENV !== 'production' ? {
   async headers() {
     return [
       {
@@ -291,6 +290,7 @@ const nextConfig = {
       },
     ];
   },
+  } : {}),
 };
 
 export default withNextIntl(nextConfig);

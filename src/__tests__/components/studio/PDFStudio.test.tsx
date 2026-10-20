@@ -6,6 +6,10 @@ import * as tauriBridge from '@/lib/tauri-bridge';
 import * as studioProcessors from '@/components/studio/studio-processors';
 import { clearPendingDroppedFiles, peekPendingDroppedFiles } from '@/lib/utils/file-tool-router';
 import { clearAllAutoBackups, clearRecentFileBlobs } from '@/lib/storage/auto-backup';
+import {
+  DEFAULT_PDF_TOOL_STORAGE_KEY,
+  DEFAULT_STARTUP_VIEW_STORAGE_KEY,
+} from '@/lib/storage/default-tool';
 
 const mockPush = vi.fn();
 
@@ -656,6 +660,67 @@ describe('PDFStudio Component', () => {
     });
 
     vi.mocked(tauriBridge.isTauri).mockReturnValue(false);
+  });
+
+  it('opens studio settings popover and toggles default tool for PDF files', async () => {
+    render(<PDFStudio locale="en" />);
+
+    // Click Settings button in studio header
+    const settingsBtn = screen.getByTestId('studio-settings-btn');
+    fireEvent.click(settingsBtn);
+
+    expect(screen.getByTestId('studio-settings-popover')).toBeInTheDocument();
+    expect(screen.getByText('Studio Preferences')).toBeInTheDocument();
+
+    const pdfToggle = screen.getByTestId('studio-setting-default-pdf-toggle') as HTMLInputElement;
+    expect(pdfToggle.checked).toBe(false);
+
+    // Toggle on
+    fireEvent.click(pdfToggle);
+    expect(pdfToggle.checked).toBe(true);
+    expect(localStorage.getItem(DEFAULT_PDF_TOOL_STORAGE_KEY)).toBe('studio');
+
+    // Toggle off
+    fireEvent.click(pdfToggle);
+    expect(pdfToggle.checked).toBe(false);
+    expect(localStorage.getItem(DEFAULT_PDF_TOOL_STORAGE_KEY)).toBeNull();
+  });
+
+  it('toggles default startup view in studio settings popover', async () => {
+    render(<PDFStudio locale="en" />);
+
+    fireEvent.click(screen.getByTestId('studio-settings-btn'));
+
+    const startupToggle = screen.getByTestId('studio-setting-default-startup-toggle') as HTMLInputElement;
+    expect(startupToggle.checked).toBe(false);
+
+    // Toggle on
+    fireEvent.click(startupToggle);
+    expect(startupToggle.checked).toBe(true);
+    expect(localStorage.getItem(DEFAULT_STARTUP_VIEW_STORAGE_KEY)).toBe('studio');
+
+    // Toggle off
+    fireEvent.click(startupToggle);
+    expect(startupToggle.checked).toBe(false);
+    expect(localStorage.getItem(DEFAULT_STARTUP_VIEW_STORAGE_KEY)).toBeNull();
+  });
+
+  it('toggles default options from the Studio welcome screen', async () => {
+    render(<PDFStudio locale="en" />);
+
+    const welcomePdfToggle = screen.getByTestId('studio-welcome-default-pdf-toggle') as HTMLInputElement;
+    const welcomeStartupToggle = screen.getByTestId('studio-welcome-default-startup-toggle') as HTMLInputElement;
+
+    expect(welcomePdfToggle.checked).toBe(false);
+    expect(welcomeStartupToggle.checked).toBe(false);
+
+    fireEvent.click(welcomePdfToggle);
+    expect(welcomePdfToggle.checked).toBe(true);
+    expect(localStorage.getItem(DEFAULT_PDF_TOOL_STORAGE_KEY)).toBe('studio');
+
+    fireEvent.click(welcomeStartupToggle);
+    expect(welcomeStartupToggle.checked).toBe(true);
+    expect(localStorage.getItem(DEFAULT_STARTUP_VIEW_STORAGE_KEY)).toBe('studio');
   });
 });
 

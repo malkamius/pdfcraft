@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { ArrowRight, Zap, Wrench, Lock, Sparkles, Edit, FileImage, FolderOpen, Settings, ShieldCheck, Star, LayoutGrid } from 'lucide-react';
@@ -11,6 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { getAllTools, getToolsByCategory, getPopularTools } from '@/config/tools';
 import { type Locale } from '@/lib/i18n/config';
 import { CATEGORY_INFO, type ToolCategory } from '@/types/tool';
+import { isStudioDefaultStartup } from '@/lib/storage/default-tool';
 
 interface HomePageClientProps {
   locale: Locale;
@@ -26,9 +29,24 @@ interface HomePageClientProps {
 // ... (props interface)
 
 export default function HomePageClient({ locale, localizedToolContent }: HomePageClientProps) {
+  const router = useRouter();
   const t = useTranslations();
   const allTools = getAllTools();
   const popularTools = getPopularTools();
+
+  // If PDF Studio is set as the default startup view on fresh application launch,
+  // redirect directly to Studio once per browser/desktop session.
+  useEffect(() => {
+    try {
+      const hasActiveSession = sessionStorage.getItem('pdfcraft_session_active');
+      if (!hasActiveSession) {
+        sessionStorage.setItem('pdfcraft_session_active', 'true');
+        if (isStudioDefaultStartup()) {
+          router.replace(`/${locale}/studio`);
+        }
+      }
+    } catch {}
+  }, [locale, router]);
 
   // Feature highlights (same as before)
   const features = [

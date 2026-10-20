@@ -30,7 +30,7 @@ vi.mock('@/lib/pdf/loader-legacy', () => {
         }),
       };
     }),
-    SVGGraphics: vi.fn().mockImplementation(() => {
+    SVGGraphics: vi.fn().mockImplementation(function () {
       return {
         getSVG: vi.fn().mockResolvedValue(mockSVGElement),
       };

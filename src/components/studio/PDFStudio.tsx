@@ -28,6 +28,7 @@ import {
   ShieldAlert,
   Save,
   FolderOpen,
+  Settings,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { Button } from '@/components/ui/Button';
@@ -42,6 +43,13 @@ import {
   findStudioToolConfig,
   addStudioRecentTool,
 } from './studio-processors';
+import {
+  isStudioDefaultPdfTool,
+  setStudioDefaultPdfTool,
+  isStudioDefaultStartup,
+  setStudioDefaultStartup,
+  subscribeDefaultToolSettings,
+} from '@/lib/storage/default-tool';
 import { saveBlobFile, isTauri, getSystemPrinters, printPdfFile, closeAppWindow } from '@/lib/tauri-bridge';
 import { withBasePath } from '@/lib/utils/path';
 import { getToolContent, type Locale } from '@/config/tool-content';
@@ -172,6 +180,9 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
   const [isOcrTextOpen, setIsOcrTextOpen] = useState<boolean>(false);
   const [ocrExportFormat, setOcrExportFormat] = useState<string>('searchable-pdf');
   const [ocrCopied, setOcrCopied] = useState<boolean>(false);
+  const [isDefaultPdfTool, setIsDefaultPdfTool] = useState<boolean>(() => isStudioDefaultPdfTool());
+  const [isDefaultStartup, setIsDefaultStartup] = useState<boolean>(() => isStudioDefaultStartup());
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   // Recent files & Auto-backup states
   const [recentFilesList, setRecentFilesList] = useState<RecentFile[]>([]);
@@ -234,6 +245,14 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     });
   }, []);
 
+  // Sync default PDF tool and startup settings across tabs/windows
+  useEffect(() => {
+    return subscribeDefaultToolSettings(() => {
+      setIsDefaultPdfTool(isStudioDefaultPdfTool());
+      setIsDefaultStartup(isStudioDefaultStartup());
+    });
+  }, []);
+
   // Update object URL when currentBlob changes
   useEffect(() => {
     if (!currentBlob) {
@@ -259,6 +278,42 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
       setNotification((curr) => (curr?.message === message ? null : curr));
     }, 3000);
   }, []);
+
+  const handleToggleDefaultPdfTool = useCallback(
+    (checked: boolean) => {
+      setStudioDefaultPdfTool(checked);
+      setIsDefaultPdfTool(checked);
+      notify(
+        'success',
+        checked
+          ? isZh
+            ? '已将 PDF Studio 设为默认打开 PDF 文件的工具'
+            : 'PDF Studio set as the default tool to open PDF files'
+          : isZh
+          ? '已取消 PDF Studio 默认工具设置，将恢复弹出工具选择'
+          : 'PDF Studio is no longer the default PDF tool'
+      );
+    },
+    [notify, isZh]
+  );
+
+  const handleToggleDefaultStartup = useCallback(
+    (checked: boolean) => {
+      setStudioDefaultStartup(checked);
+      setIsDefaultStartup(checked);
+      notify(
+        'success',
+        checked
+          ? isZh
+            ? '已将 PDF Studio 设为应用启动默认打开页面'
+            : 'PDF Studio set as the default startup view'
+          : isZh
+          ? '应用启动将恢复默认显示经典工具网格'
+          : 'PDF Studio is no longer the default startup view'
+      );
+    },
+    [notify, isZh]
+  );
 
   const handleSelectToolForDroppedFiles = useCallback(
     (tool: Tool, validFiles: File[]) => {
@@ -1298,6 +1353,7 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
               onClick={() => {
                 refreshStorageLists();
                 setIsRecentBackupOpen((prev) => !prev);
+                setIsSettingsOpen(false);
                 setIsExportMenuOpen(false);
                 setIsHistoryOpen(false);
               }}
@@ -1478,6 +1534,102 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Studio Settings Popover Button */}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="studio-settings-btn"
+              onClick={() => {
+                setIsSettingsOpen((prev) => !prev);
+                setIsRecentBackupOpen(false);
+                setIsExportMenuOpen(false);
+                setIsHistoryOpen(false);
+              }}
+              className={`h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-all ${
+                isSettingsOpen
+                  ? 'border-[hsl(var(--color-primary))] bg-[hsl(var(--color-primary)/0.1)] text-[hsl(var(--color-primary))]'
+                  : 'border-[hsl(var(--color-border))] bg-[hsl(var(--color-background))] text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-foreground))] hover:bg-[hsl(var(--color-muted))]'
+              }`}
+              title={isZh ? 'Studio 设置' : 'Studio Settings'}
+              aria-label={isZh ? 'Studio 设置' : 'Studio Settings'}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span className="hidden xl:inline">{isZh ? '设置' : 'Settings'}</span>
+            </button>
+
+            {isSettingsOpen && (
+              <div
+                data-testid="studio-settings-popover"
+                className="absolute right-0 top-10 w-80 bg-[hsl(var(--color-card))] border border-[hsl(var(--color-border))] rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95 duration-150"
+              >
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-[hsl(var(--color-border))]">
+                  <span className="text-xs font-bold text-[hsl(var(--color-foreground))] flex items-center gap-1.5">
+                    <Settings className="w-3.5 h-3.5 text-[hsl(var(--color-primary))]" />
+                    {isZh ? 'Studio 首选项设置' : 'Studio Preferences'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsOpen(false)}
+                    className="p-1 rounded-md text-[hsl(var(--color-muted-foreground))] hover:bg-[hsl(var(--color-muted))]"
+                    aria-label="Close studio settings popover"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3.5">
+                  {/* Option 1: Default tool to open PDF files with */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-[hsl(var(--color-foreground))]">
+                        {isZh ? '默认打开 PDF 工具' : 'Default Tool for PDF Files'}
+                      </div>
+                      <p className="text-[11px] text-[hsl(var(--color-muted-foreground))] mt-0.5 leading-relaxed">
+                        {isZh
+                          ? '从外部或其它页面打开 PDF 文件时，直接在 PDF Studio 中打开。在工具选择页拖放时仍可选择所有工具。'
+                          : 'Directly open PDF files in PDF Studio from desktop or other pages. Dropping on the tool selection page still shows all tools.'}
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                      <input
+                        type="checkbox"
+                        data-testid="studio-setting-default-pdf-toggle"
+                        checked={isDefaultPdfTool}
+                        onChange={(e) => handleToggleDefaultPdfTool(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-[hsl(var(--color-muted))] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[hsl(var(--color-primary))]"></div>
+                    </label>
+                  </div>
+
+                  {/* Option 2: Default view on application startup */}
+                  <div className="flex items-start justify-between gap-3 pt-3 border-t border-[hsl(var(--color-border)/0.6)]">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-[hsl(var(--color-foreground))]">
+                        {isZh ? '应用启动时默认进入 Studio' : 'Open Studio on Application Startup'}
+                      </div>
+                      <p className="text-[11px] text-[hsl(var(--color-muted-foreground))] mt-0.5 leading-relaxed">
+                        {isZh
+                          ? '启动应用时默认直接进入 PDF Studio 工作台。您可以随时通过顶部按钮切换回经典网格。'
+                          : 'Open directly into PDF Studio workspace on startup. You can always go back to the tool selection page anytime.'}
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                      <input
+                        type="checkbox"
+                        data-testid="studio-setting-default-startup-toggle"
+                        checked={isDefaultStartup}
+                        onChange={(e) => handleToggleDefaultStartup(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-[hsl(var(--color-muted))] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[hsl(var(--color-primary))]"></div>
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
@@ -1953,7 +2105,31 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
                 </Link>
               </div>
 
-              <div className="mt-6 flex items-center gap-4 text-[11px] text-[hsl(var(--color-muted-foreground)/0.7)]">
+              <div className="mt-4 pt-3 border-t border-[hsl(var(--color-border)/0.5)] w-full flex flex-col sm:flex-row items-center justify-center gap-3 text-xs text-[hsl(var(--color-muted-foreground))]">
+                <label className="inline-flex items-center gap-2 cursor-pointer hover:text-[hsl(var(--color-foreground))] transition-colors select-none">
+                  <input
+                    type="checkbox"
+                    data-testid="studio-welcome-default-pdf-toggle"
+                    checked={isDefaultPdfTool}
+                    onChange={(e) => handleToggleDefaultPdfTool(e.target.checked)}
+                    className="rounded border-[hsl(var(--color-border))] text-[hsl(var(--color-primary))] focus:ring-[hsl(var(--color-primary))]"
+                  />
+                  <span>{isZh ? '设为默认打开 PDF 的工具' : 'Set as default tool to open PDF files'}</span>
+                </label>
+                <span className="hidden sm:inline text-[hsl(var(--color-border))]">•</span>
+                <label className="inline-flex items-center gap-2 cursor-pointer hover:text-[hsl(var(--color-foreground))] transition-colors select-none">
+                  <input
+                    type="checkbox"
+                    data-testid="studio-welcome-default-startup-toggle"
+                    checked={isDefaultStartup}
+                    onChange={(e) => handleToggleDefaultStartup(e.target.checked)}
+                    className="rounded border-[hsl(var(--color-border))] text-[hsl(var(--color-primary))] focus:ring-[hsl(var(--color-primary))]"
+                  />
+                  <span>{isZh ? '应用启动时默认进入 Studio' : 'Open Studio on application startup'}</span>
+                </label>
+              </div>
+
+              <div className="mt-4 flex items-center gap-4 text-[11px] text-[hsl(var(--color-muted-foreground)/0.7)]">
                 <span>{isZh ? '支持拖拽多个 PDF 至此' : 'Drag & drop multiple PDFs here'}</span>
                 <span>•</span>
                 <span>{isZh ? '全本地纯离线处理' : '100% Offline & Private'}</span>

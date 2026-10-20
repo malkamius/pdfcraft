@@ -10,7 +10,9 @@ import {
   doesToolSupportFile,
   setPendingDroppedFiles,
   registerGlobalFileDropRouter,
+  isPdfFile,
 } from '@/lib/utils/file-tool-router';
+import { isStudioDefaultPdfTool } from '@/lib/storage/default-tool';
 import { ToolSelectionModal } from './ToolSelectionModal';
 import {
   getCliOpenFiles,
@@ -48,11 +50,30 @@ export const GlobalFileDropHandler: React.FC<GlobalFileDropHandlerProps> = ({ lo
   );
 
   const handleRoutedFiles = useCallback(
-    (incomingFiles: File[]) => {
+    (incomingFiles: File[], source: 'cli-open' | 'drop' = 'drop') => {
       if (!incomingFiles || incomingFiles.length === 0) return;
 
       const compatibleTools = getCompatibleToolsForFiles(incomingFiles);
       if (compatibleTools.length === 0) return;
+
+      const areAllPdfs = incomingFiles.length > 0 && incomingFiles.every((f) => isPdfFile(f));
+      const isToolSelectionPage =
+        !pathname ||
+        pathname === '/' ||
+        pathname === `/${locale}` ||
+        pathname === `/${locale}/`;
+
+      // If a PDF is dropped onto the tool selection page, it should always show the tool list that supports PDF.
+      // Otherwise, if PDF Studio is set as the default tool to open PDF files with, route directly to Studio.
+      const shouldBypassToStudio =
+        isStudioDefaultPdfTool() &&
+        areAllPdfs &&
+        (source === 'cli-open' || !isToolSelectionPage);
+
+      if (shouldBypassToStudio) {
+        openStudioWithFiles(incomingFiles);
+        return;
+      }
 
       if (compatibleTools.length === 1) {
         const targetTool = compatibleTools[0];
@@ -65,7 +86,7 @@ export const GlobalFileDropHandler: React.FC<GlobalFileDropHandlerProps> = ({ lo
       setModalTools(compatibleTools);
       setIsModalOpen(true);
     },
-    [openToolWithFiles]
+    [locale, pathname, openStudioWithFiles, openToolWithFiles]
   );
 
   // Handle files passed via Windows "Open with" / command line / file association
@@ -78,7 +99,7 @@ export const GlobalFileDropHandler: React.FC<GlobalFileDropHandlerProps> = ({ lo
       try {
         const files = await createFilesFromFilePaths(paths);
         if (isSubscribed && files.length > 0) {
-          handleRoutedFiles(files);
+          handleRoutedFiles(files, 'cli-open');
         }
       } catch (err) {
         console.error('Failed to process opened files from Windows/CLI:', err);
@@ -109,7 +130,7 @@ export const GlobalFileDropHandler: React.FC<GlobalFileDropHandlerProps> = ({ lo
 
   // Register as the global file drop router for child components (like FileUploader)
   useEffect(() => {
-    return registerGlobalFileDropRouter(handleRoutedFiles);
+    return registerGlobalFileDropRouter((files) => handleRoutedFiles(files, 'drop'));
   }, [handleRoutedFiles]);
 
   // Handle window-level drops outside specific dropzones
@@ -142,7 +163,7 @@ export const GlobalFileDropHandler: React.FC<GlobalFileDropHandlerProps> = ({ lo
         }
       }
 
-      handleRoutedFiles(fileArray);
+      handleRoutedFiles(fileArray, 'drop');
     };
 
     window.addEventListener('dragover', handleWindowDragOver);
