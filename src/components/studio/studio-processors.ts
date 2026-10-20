@@ -205,7 +205,8 @@ export type StudioToolId = string;
 export async function executeStudioOperation(
   file: File,
   rawToolId: string,
-  options: Record<string, any> = {}
+  options: Record<string, any> = {},
+  onProgress?: (progress: number, message?: string) => void
 ): Promise<Blob> {
   const toolId = normalizeStudioToolId(rawToolId);
   let processor: any;
@@ -602,12 +603,31 @@ export async function executeStudioOperation(
     ? [file, ...options.additionalFiles]
     : [file];
 
-  const output = await processor.process({
-    files: inputFiles,
-    options,
-  });
+  const progressCb = onProgress || options.onProgress;
+  const signal: AbortSignal | undefined = options.signal || options.abortSignal;
+
+  if (signal) {
+    if (signal.aborted) {
+      processor.cancel();
+    } else {
+      signal.addEventListener('abort', () => {
+        processor.cancel();
+      }, { once: true });
+    }
+  }
+
+  const output = await processor.process(
+    {
+      files: inputFiles,
+      options,
+    },
+    progressCb
+  );
 
   if (!output.success || !output.result) {
+    if (signal?.aborted || output.error?.code === 'PROCESSING_CANCELLED') {
+      throw new Error('Processing was cancelled.');
+    }
     throw new Error(output.error?.message || 'Operation failed');
   }
 
@@ -628,7 +648,8 @@ export async function executeStudioOperation(
 export async function executeStudioExport(
   file: File,
   rawToolId: string,
-  options: Record<string, any> = {}
+  options: Record<string, any> = {},
+  onProgress?: (progress: number, message?: string) => void
 ): Promise<{ blob: Blob; filename: string }> {
   const toolId = normalizeStudioToolId(rawToolId);
   const baseName = file.name.replace(/\.pdf$/i, '');
@@ -760,12 +781,31 @@ export async function executeStudioExport(
       throw new Error(`Unsupported studio export tool: ${toolId}`);
   }
 
-  const output = await processor.process({
-    files: [file],
-    options,
-  });
+  const progressCb = onProgress || options.onProgress;
+  const signal: AbortSignal | undefined = options.signal || options.abortSignal;
+
+  if (signal) {
+    if (signal.aborted) {
+      processor.cancel();
+    } else {
+      signal.addEventListener('abort', () => {
+        processor.cancel();
+      }, { once: true });
+    }
+  }
+
+  const output = await processor.process(
+    {
+      files: [file],
+      options,
+    },
+    progressCb
+  );
 
   if (!output.success || !output.result) {
+    if (signal?.aborted || output.error?.code === 'PROCESSING_CANCELLED') {
+      throw new Error('Processing was cancelled.');
+    }
     throw new Error(output.error?.message || 'Export failed');
   }
 

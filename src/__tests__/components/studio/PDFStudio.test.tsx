@@ -722,5 +722,46 @@ describe('PDFStudio Component', () => {
     expect(welcomeStartupToggle.checked).toBe(true);
     expect(localStorage.getItem(DEFAULT_STARTUP_VIEW_STORAGE_KEY)).toBe('studio');
   });
+
+  it('allows cancelling an in-progress operation via the overlay cancel button', async () => {
+    let cancelTriggered = false;
+    vi.spyOn(studioProcessors, 'executeStudioOperation').mockImplementation(
+      async (_file, _toolId, options) => {
+        if (options?.signal) {
+          options.signal.addEventListener('abort', () => {
+            cancelTriggered = true;
+          });
+        }
+        return new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => {
+            reject(new Error('Processing was cancelled.'));
+          });
+        });
+      }
+    );
+
+    const file = createDummyPdfFile('test.pdf');
+    render(<PDFStudio locale="en" initialFile={file} />);
+
+    const searchInput = screen.getByTestId('studio-tool-search');
+    fireEvent.change(searchInput, { target: { value: 'rotate' } });
+    const rotateBtn = screen.getByTestId('tool-item-rotate-pdf');
+    fireEvent.click(rotateBtn);
+
+    const applyBtn = screen.getByRole('button', { name: /Apply Changes/i });
+    fireEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('studio-processing-overlay')).toBeInTheDocument();
+      expect(screen.getByTestId('studio-processing-cancel-btn')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('studio-processing-cancel-btn'));
+
+    expect(cancelTriggered).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByTestId('studio-processing-overlay')).not.toBeInTheDocument();
+    });
+  });
 });
 

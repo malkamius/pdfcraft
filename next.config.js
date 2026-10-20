@@ -28,8 +28,8 @@ function resolveAppVersion() {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable static export for deployment flexibility
-  output: 'export',
+  // Enable static export for deployment flexibility (only during build/production)
+  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   
   // Support deployment under a subpath (e.g., /pdfcraft/)
   // Use BASE_PATH or NEXT_PUBLIC_BASE_PATH environment variable

@@ -8,19 +8,31 @@ import {
   generateMarkdownOutput,
   generateJsonOutput,
   generateDocxOutput,
+  getInkExtent,
+  extractLinesAndWords,
+  CAP_HEIGHT,
+  X_HEIGHT,
+  DESCENT,
 } from '@/lib/pdf/processors/ocr';
 import { PDFErrorCode } from '@/types/pdf';
 
 // Mock Tesseract.js
-const mockRecognize = vi.fn().mockResolvedValue({
-  data: {
-    text: 'Hello World 测试中文',
-    words: [
-      { text: 'Hello', bbox: { x0: 10, y0: 10, x1: 50, y1: 25 } },
-      { text: 'World', bbox: { x0: 55, y0: 10, x1: 95, y1: 25 } },
-      { text: '测试中文', bbox: { x0: 100, y0: 10, x1: 150, y1: 25 } },
-    ],
-  },
+let capturedLogger: ((m: any) => void) | null = null;
+
+const mockRecognize = vi.fn().mockImplementation(async () => {
+  if (capturedLogger) {
+    capturedLogger({ status: 'recognizing text', progress: 0.5 });
+  }
+  return {
+    data: {
+      text: 'Hello World 测试中文',
+      words: [
+        { text: 'Hello', bbox: { x0: 10, y0: 10, x1: 50, y1: 25 } },
+        { text: 'World', bbox: { x0: 55, y0: 10, x1: 95, y1: 25 } },
+        { text: '测试中文', bbox: { x0: 100, y0: 10, x1: 150, y1: 25 } },
+      ],
+    },
+  };
 });
 
 const mockTerminate = vi.fn().mockResolvedValue(undefined);
@@ -30,6 +42,7 @@ vi.mock('tesseract.js', () => ({
   PSM: { AUTO: '3' },
   default: {
     createWorker: vi.fn().mockImplementation(async (lang, oem, options) => {
+      capturedLogger = options?.logger || null;
       if (options?.logger) {
         options.logger({ status: 'loading tesseract core', progress: 0.5 });
       }
@@ -41,6 +54,7 @@ vi.mock('tesseract.js', () => ({
     }),
   },
   createWorker: vi.fn().mockImplementation(async (lang, oem, options) => {
+    capturedLogger = options?.logger || null;
     if (options?.logger) {
       options.logger({ status: 'loading tesseract core', progress: 0.5 });
     }
@@ -262,6 +276,34 @@ describe('OCRProcessor', () => {
       expect(progressUpdates[progressUpdates.length - 1]).toBe(100);
     });
 
+    it('reports per-page recognition progress with percentage back to callback', async () => {
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]);
+      const file = new File([pdfBytes], 'sample_report.pdf', { type: 'application/pdf' });
+
+      const progressHistory: Array<{ progress: number; message?: string }> = [];
+
+      await processor.process(
+        {
+          files: [file],
+          options: {
+            languages: ['eng'],
+            outputFormat: 'text',
+          },
+        },
+        (progress, message) => {
+          progressHistory.push({ progress, message });
+        }
+      );
+
+      const pageProgressUpdates = progressHistory.filter(
+        (p) => p.message && p.message.includes('Page 1/1')
+      );
+      expect(pageProgressUpdates.length).toBeGreaterThan(0);
+      expect(pageProgressUpdates.some((p) => p.message === 'Page 1/1 (0%)...')).toBe(true);
+      expect(pageProgressUpdates.some((p) => p.message === 'Page 1/1 (50%)')).toBe(true);
+      expect(pageProgressUpdates.some((p) => p.message === 'Page 1/1 (100%)')).toBe(true);
+    });
+
     it('successfully creates searchable PDF and embeds invisible text layer', async () => {
       const fontFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
@@ -443,6 +485,194 @@ describe('OCRProcessor', () => {
       const result = await ocrPDF(file, { outputFormat: 'docx' });
       expect(result.success).toBe(true);
       expect(result.filename).toBe('contract_ocr.docx');
+    });
+  });
+
+  describe('Text Layer Typography & Alignment (storytold-pdfcraft model)', () => {
+    it('getInkExtent calculates correct vertical bounds for different glyph types', () => {
+      // Tall letters / uppercase / ascenders
+      const capResult = getInkExtent('PDFCraft');
+      expect(capResult.top).toBe(CAP_HEIGHT);
+      expect(capResult.bottom).toBe(0.0);
+
+      // x-height only
+      const xResult = getInkExtent('sun');
+      expect(xResult.top).toBe(X_HEIGHT);
+      expect(xResult.bottom).toBe(0.0);
+
+      // Descender letters (g, j, p, q, y)
+      const descResult = getInkExtent('gap');
+      expect(descResult.top).toBe(X_HEIGHT);
+      expect(descResult.bottom).toBe(-DESCENT);
+
+      // Tall + descender
+      const jumpingResult = getInkExtent('jumping');
+      expect(jumpingResult.top).toBe(CAP_HEIGHT);
+      expect(jumpingResult.bottom).toBe(-DESCENT);
+
+      // Non-Latin / CJK
+      const cjkResult = getInkExtent('中文测试');
+      expect(cjkResult.top).toBe(0.88);
+      expect(cjkResult.bottom).toBe(-0.12);
+    });
+
+    it('extractLinesAndWords unifies line baselines across all words on the same line', () => {
+      const mockResultData = {
+        blocks: [
+          {
+            paragraphs: [
+              {
+                lines: [
+                  {
+                    text: 'The quick brown fox jumps',
+                    bbox: { x0: 50, y0: 100, x1: 500, y1: 140 },
+                    baseline: { x0: 50, y0: 135, x1: 500, y1: 135 },
+                    words: [
+                      { text: 'The', bbox: { x0: 50, y0: 105, x1: 100, y1: 135 }, confidence: 95 },
+                      { text: 'quick', bbox: { x0: 110, y0: 105, x1: 180, y1: 140 }, confidence: 94 }, // has 'q' descender
+                      { text: 'brown', bbox: { x0: 190, y0: 105, x1: 260, y1: 135 }, confidence: 96 },
+                      { text: 'fox', bbox: { x0: 270, y0: 105, x1: 320, y1: 135 }, confidence: 93 },
+                      { text: 'jumps', bbox: { x0: 330, y0: 105, x1: 410, y1: 140 }, confidence: 92 }, // has 'j', 'p' descenders
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const scale = 2.0;
+      const pageHeight = 800;
+      const { lines, words } = extractLinesAndWords(mockResultData, scale, pageHeight);
+
+      expect(lines).toHaveLength(1);
+      expect(words).toHaveLength(5);
+
+      const line = lines[0];
+      // Expected baseline in PDF coordinates: pageHeight - (baselineCanvasY / scale) = 800 - (135 / 2) = 732.5
+      expect(line.pdfBaselineY).toBeCloseTo(732.5);
+      expect(line.words).toHaveLength(5);
+      expect(line.words[0].text).toBe('The');
+      expect(line.words[1].text).toBe('quick');
+    });
+
+    it('extractLinesAndWords groups flat words into coherent lines by vertical proximity', () => {
+      const mockResultData = {
+        words: [
+          { text: 'Line1Word1', bbox: { x0: 50, y0: 100, x1: 120, y1: 120 }, confidence: 90 },
+          { text: 'Line1Word2', bbox: { x0: 130, y0: 100, x1: 200, y1: 120 }, confidence: 92 },
+          { text: 'Line2Word1', bbox: { x0: 50, y0: 200, x1: 120, y1: 220 }, confidence: 91 },
+        ],
+      };
+
+      const scale = 1.0;
+      const pageHeight = 800;
+      const { lines, words } = extractLinesAndWords(mockResultData, scale, pageHeight);
+
+      expect(lines).toHaveLength(2);
+      expect(words).toHaveLength(3);
+      expect(lines[0].words).toHaveLength(2);
+      expect(lines[1].words).toHaveLength(1);
+    });
+
+    it('generates high-fidelity text layer with pushOperators, 3 Tr mode, and text matrix', async () => {
+      const pushedOperators: any[] = [];
+      const mockPageWithOperators = {
+        pushOperators: vi.fn().mockImplementation((...ops) => {
+          pushedOperators.push(...ops);
+        }),
+        setOrEmbedFont: vi.fn().mockReturnValue({ newFontKey: 'MockFontKey' }),
+      };
+
+      const mockPdfDocWithOperators = {
+        getPageCount: () => 1,
+        getPage: () => mockPageWithOperators,
+        embedFont: vi.fn().mockResolvedValue({
+          name: 'Helvetica',
+          widthOfTextAtSize: () => 10,
+          encodeText: (str: string) => `encoded(${str})`,
+        }),
+        registerFontkit: vi.fn(),
+        setTitle: vi.fn(),
+        setSubject: vi.fn(),
+        setKeywords: vi.fn(),
+        save: vi.fn().mockResolvedValue(new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+      };
+
+      const { loadPdfLib } = await import('@/lib/pdf/loader');
+      (loadPdfLib as any).mockResolvedValueOnce({
+        PDFDocument: {
+          load: vi.fn().mockResolvedValue(mockPdfDocWithOperators),
+        },
+        StandardFonts: {
+          Helvetica: 'Helvetica',
+        },
+        PDFOperator: {
+          of: (name: string, args: any[]) => ({ name, args }),
+        },
+        PDFOperatorNames: {
+          BeginMarkedContent: 'BMC',
+          PushGraphicsState: 'q',
+          BeginText: 'BT',
+          SetTextRenderingMode: 'Tr',
+          SetFontAndSize: 'Tf',
+          SetTextMatrix: 'Tm',
+          ShowText: 'Tj',
+          EndText: 'ET',
+          PopGraphicsState: 'Q',
+          EndMarkedContent: 'EMC',
+        },
+        PDFName: {
+          of: (name: string) => name,
+        },
+        asPDFNumber: (num: number) => num,
+        rgb: vi.fn(),
+      });
+
+      mockRecognize.mockResolvedValueOnce({
+        data: {
+          text: 'PDFCraft Test',
+          blocks: [
+            {
+              paragraphs: [
+                {
+                  lines: [
+                    {
+                      text: 'PDFCraft Test',
+                      bbox: { x0: 20, y0: 40, x1: 200, y1: 80 },
+                      baseline: { x0: 20, y0: 75, x1: 200, y1: 75 },
+                      words: [
+                        { text: 'PDFCraft', bbox: { x0: 20, y0: 40, x1: 120, y1: 75 }, confidence: 98 },
+                        { text: 'Test', bbox: { x0: 130, y0: 40, x1: 200, y1: 75 }, confidence: 99 },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const result = await ocrPDF(new File(['%PDF-1.4'], 'input.pdf'), { outputFormat: 'searchable-pdf' });
+      expect(result.success).toBe(true);
+      expect(mockPageWithOperators.pushOperators).toHaveBeenCalled();
+
+      // Check for 3 Tr (TextRenderingMode.Invisible)
+      const trOp = pushedOperators.find(op => op.name === 'Tr');
+      expect(trOp).toBeDefined();
+      expect(trOp.args).toEqual([3]);
+
+      // Check for SetTextMatrix (Tm)
+      const tmOps = pushedOperators.filter(op => op.name === 'Tm');
+      expect(tmOps.length).toBe(2); // One per word
+
+      // Check for ShowText (Tj)
+      const tjOps = pushedOperators.filter(op => op.name === 'Tj');
+      expect(tjOps.length).toBe(2);
+      expect(tjOps[0].args[0]).toBe('encoded(PDFCraft)');
+      expect(tjOps[1].args[0]).toBe('encoded(Test)');
     });
   });
 });

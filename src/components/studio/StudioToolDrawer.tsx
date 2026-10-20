@@ -209,6 +209,8 @@ interface StudioToolDrawerProps {
   onApply: (toolId: StudioToolId, options: Record<string, any>) => Promise<void>;
   onExport?: (toolId: StudioToolId, options: Record<string, any>) => Promise<void>;
   isApplying: boolean;
+  applyProgress?: number;
+  applyProgressMessage?: string;
   locale?: string;
   availableDocuments?: Array<{ id: string; name: string; file: File; currentBlob: Blob }>;
   totalPages?: number;
@@ -220,6 +222,8 @@ export const StudioToolDrawer: React.FC<StudioToolDrawerProps> = ({
   onApply,
   onExport,
   isApplying,
+  applyProgress = 0,
+  applyProgressMessage = '',
   locale = 'en',
   availableDocuments = [],
   totalPages = 1,
@@ -2251,7 +2255,11 @@ export const StudioToolDrawer: React.FC<StudioToolDrawerProps> = ({
             {isApplying ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                <span>{isZh ? '处理中...' : 'Processing...'}</span>
+                <span>
+                  {typeof applyProgress === 'number' && applyProgress > 0
+                    ? `${Math.round(applyProgress)}%`
+                    : (isZh ? '处理中...' : 'Processing...')}
+                </span>
               </>
             ) : executionType === 'export' ? (
               <>

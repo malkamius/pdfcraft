@@ -174,6 +174,10 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
   const [activeToolId, setActiveToolId] = useState<StudioToolId | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isApplying, setIsApplying] = useState<boolean>(false);
+  const [applyProgress, setApplyProgress] = useState<number>(0);
+  const [applyProgressMessage, setApplyProgressMessage] = useState<string>('');
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
+
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
   const [isRecentBackupOpen, setIsRecentBackupOpen] = useState<boolean>(false);
@@ -880,15 +884,47 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     [handleAddFiles]
   );
 
+  // Cancel any ongoing in-place or export operation
+  const handleCancelOperation = useCallback(() => {
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+      activeAbortControllerRef.current = null;
+    }
+    setIsApplying(false);
+    setApplyProgress(0);
+    setApplyProgressMessage('');
+  }, []);
+
   // Apply a tool operation in-place on current active document
   const handleApplyTool = useCallback(
     async (toolId: StudioToolId, options: Record<string, any> = {}) => {
       if (!currentBlob || !file || !activeDoc) return;
 
+      const abortController = new AbortController();
+      activeAbortControllerRef.current = abortController;
+
       setIsApplying(true);
+      setApplyProgress(0);
+      setApplyProgressMessage(isZh ? '正在就地处理文档...' : 'Processing document in-place...');
       try {
         const tempFile = new File([currentBlob], file.name, { type: 'application/pdf' });
-        const newBlob = await executeStudioOperation(tempFile, toolId, options);
+        const onProgress = (prog: number, msg?: string) => {
+          if (!abortController.signal.aborted) {
+            setApplyProgress(prog);
+            if (msg) {
+              setApplyProgressMessage(msg);
+            }
+          }
+        };
+        const newBlob = await executeStudioOperation(
+          tempFile,
+          toolId,
+          { ...options, onProgress, signal: abortController.signal }
+        );
+
+        if (abortController.signal.aborted) {
+          return;
+        }
 
         const toolConfig = findStudioToolConfig(toolId);
         const localizedContent = getToolContent(validLocale as Locale, toolId);
@@ -935,12 +971,24 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
             : `Applied "${toolName}" in-place. Select another action on the left`
         );
       } catch (err: any) {
+        if (
+          abortController.signal.aborted ||
+          err?.message?.includes('cancelled') ||
+          err?.message?.includes('Cancelled')
+        ) {
+          return;
+        }
         notify(
           'error',
           err?.message || (isZh ? '操作应用失败，请检查参数' : 'Failed to apply operation. Please check options')
         );
       } finally {
+        if (activeAbortControllerRef.current === abortController) {
+          activeAbortControllerRef.current = null;
+        }
         setIsApplying(false);
+        setApplyProgress(0);
+        setApplyProgressMessage('');
       }
     },
     [currentBlob, file, activeDoc, notify, validLocale, isZh, refreshStorageLists]
@@ -1014,10 +1062,31 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
     async (toolId: StudioToolId, options: Record<string, any> = {}) => {
       if (!currentBlob || !file) return;
 
+      const abortController = new AbortController();
+      activeAbortControllerRef.current = abortController;
+
       setIsApplying(true);
+      setApplyProgress(0);
+      setApplyProgressMessage(isZh ? '正在准备转换导出...' : 'Preparing export...');
       try {
         const tempFile = new File([currentBlob], file.name, { type: 'application/pdf' });
-        const { blob, filename } = await executeStudioExport(tempFile, toolId, options);
+        const onProgress = (prog: number, msg?: string) => {
+          if (!abortController.signal.aborted) {
+            setApplyProgress(prog);
+            if (msg) {
+              setApplyProgressMessage(msg);
+            }
+          }
+        };
+        const { blob, filename } = await executeStudioExport(
+          tempFile,
+          toolId,
+          { ...options, onProgress, signal: abortController.signal }
+        );
+
+        if (abortController.signal.aborted) {
+          return;
+        }
 
         await saveBlobFile(blob, filename);
         setActiveToolId(null);
@@ -1029,12 +1098,24 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
             : `Export completed, downloading "${filename}"`
         );
       } catch (err: any) {
+        if (
+          abortController.signal.aborted ||
+          err?.message?.includes('cancelled') ||
+          err?.message?.includes('Cancelled')
+        ) {
+          return;
+        }
         notify('error', err?.message || (isZh ? '导出转换失败' : 'Export conversion failed'));
       } finally {
+        if (activeAbortControllerRef.current === abortController) {
+          activeAbortControllerRef.current = null;
+        }
         setIsApplying(false);
+        setApplyProgress(0);
+        setApplyProgressMessage('');
       }
     },
-    [currentBlob, file, notify, isZh]
+    [currentBlob, file, notify, isZh, saveBlobFile]
   );
 
   // Undo last operation on active document
@@ -2026,12 +2107,40 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
 
                 {/* Processing Overlay Feedback */}
                 {isApplying && (
-                  <div className="absolute inset-0 bg-background/50 backdrop-blur-xs z-30 flex flex-col items-center justify-center animate-in fade-in duration-200">
-                    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-[hsl(var(--color-card)/0.95)] border border-[hsl(var(--color-border))] shadow-2xl">
+                  <div
+                    data-testid="studio-processing-overlay"
+                    className="absolute inset-0 bg-background/60 backdrop-blur-xs z-30 flex flex-col items-center justify-center animate-in fade-in duration-200"
+                  >
+                    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-[hsl(var(--color-card)/0.95)] border border-[hsl(var(--color-border))] shadow-2xl min-w-[280px] max-w-sm w-full mx-4">
                       <Loader2 className="w-8 h-8 text-[hsl(var(--color-primary))] animate-spin" />
-                      <div className="text-center">
-                        <p className="text-xs font-bold text-[hsl(var(--color-foreground))]">{isZh ? '正在就地处理文档...' : 'Processing document in-place...'}</p>
-                        <p className="text-[10px] text-[hsl(var(--color-muted-foreground))] mt-0.5">{isZh ? '100% 浏览器内存安全运行，零网络上传' : '100% Client-side safe, zero network upload'}</p>
+                      <div className="text-center w-full">
+                        <div className="flex items-center justify-between gap-3 mb-1.5">
+                          <p className="text-xs font-bold text-[hsl(var(--color-foreground))] truncate flex-1 text-left">
+                            {applyProgressMessage || (isZh ? '正在就地处理文档...' : 'Processing document in-place...')}
+                          </p>
+                          <span className="text-xs font-bold text-[hsl(var(--color-primary))] shrink-0">
+                            {Math.round(applyProgress)}%
+                          </span>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="w-full h-1.5 bg-[hsl(var(--color-muted))] rounded-full overflow-hidden mb-2">
+                          <div
+                            className="h-full bg-[hsl(var(--color-primary))] transition-all duration-200 ease-out rounded-full"
+                            style={{ width: `${Math.max(0, Math.min(100, applyProgress))}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-[hsl(var(--color-muted-foreground))] mb-3">
+                          {isZh ? '100% 浏览器内存安全运行，零网络上传' : '100% Client-side safe, zero network upload'}
+                        </p>
+                        {/* Cancel Button */}
+                        <button
+                          type="button"
+                          onClick={handleCancelOperation}
+                          data-testid="studio-processing-cancel-btn"
+                          className="inline-flex items-center justify-center px-4 py-1.5 text-xs font-medium text-[hsl(var(--color-muted-foreground))] hover:text-[hsl(var(--color-foreground))] hover:bg-[hsl(var(--color-muted)/0.5)] rounded-lg transition-colors border border-[hsl(var(--color-border)/0.8)] cursor-pointer"
+                        >
+                          {isZh ? '取消操作' : 'Cancel Operation'}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -2046,6 +2155,8 @@ export const PDFStudio: React.FC<PDFStudioProps> = ({
               onApply={(tid: StudioToolId, opts: Record<string, any>) => handleApplyTool(tid, opts)}
               onExport={(tid: StudioToolId, opts: Record<string, any>) => handleExportTool(tid, opts)}
               isApplying={isApplying}
+              applyProgress={applyProgress}
+              applyProgressMessage={applyProgressMessage}
               locale={validLocale}
               availableDocuments={availableDocuments}
             />
