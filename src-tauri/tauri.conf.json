@@ -1,6 +1,6 @@
 {
   "productName": "PDFCraft",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "identifier": "com.pdfcraft.app",
   "build": {
     "beforeDevCommand": "npm run dev",
