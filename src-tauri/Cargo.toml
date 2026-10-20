@@ -1,6 +1,6 @@
 [package]
 name = "pdfcraft"
-version = "0.1.1"
+version = "0.1.2"
 description = "PDFCraft Desktop Application"
 authors = ["PDFCraft"]
 edition = "2021"
